@@ -1,5 +1,7 @@
 # DeepSeek Harness 白皮书（本地文档站）
 
+[English](README.en.md) | 中文
+
 仿照 Claude Code 逆向工程白皮书体例编写的 **DeepSeek Harness 架构白皮书**：从架构全景、核心循环、工具系统、上下文工程、安全模型到内部机制，共 **9 章 36 页 · 中英双语**，全部基于开源仓库源码与官方文档整理。
 
 站点支持 Mintlify 风格的主题切换（**深色 / 浅色**）与语言切换（**中文 / English**），选择会记住在浏览器 `localStorage` 中。

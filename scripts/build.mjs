@@ -267,7 +267,7 @@ ${THEME_BODY}
 function indexHtml(outRoot, L, body) {
   const otherOut = join(ROOT, LANGS[L.otherLang].out)
   const langHref = rel(join(outRoot, 'index.html'), join(otherOut, 'index.html'))
-  const readmeHref = L.lang === 'zh' ? 'README.md' : rel(join(outRoot, 'index.html'), join(ROOT, 'README.md'))
+  const readmeHref = L.lang === 'zh' ? 'README.md' : rel(join(outRoot, 'index.html'), join(ROOT, 'site', 'README.en.md'))
   const srcRoot = join(ROOT, L.src)
   const cards = nav.map(s => {
     return s.items.map(it => {
@@ -305,6 +305,13 @@ ${THEME_BODY}
 // ---------- main ----------
 const want = (process.argv[2] || '').toLowerCase()
 const langs = want ? (want === 'all' ? ['zh', 'en'] : [want]) : ['zh', 'en']
+
+// copy README files into the deployable site root
+for (const name of ['README.md', 'README.en.md']) {
+  const src = join(ROOT, name)
+  if (existsSync(src)) writeFileSync(join(ROOT, 'site', name), readFileSync(src, 'utf8'))
+}
+
 for (const lang of langs) {
   if (!LANGS[lang]) { console.error('unknown language:', lang, '(use zh | en | all)'); process.exitCode = 1; continue }
   const L = LANGS[lang]
