@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Safety Matters: The Threat Model — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item active" href="why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../safety/why-safety-matters.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Safety / Safety Matters: The Threat Model</div>
+      <h1>Why Safety Matters: The Threat Model</h1>
+<blockquote><p>When an AI can operate on your real project files and run commands, where is the safety boundary? This page analyzes DeepSeek Harness's safety challenges, threat model, and defense-in-depth strategy — how approval, sandboxing, plan mode, and credential isolation each play their part.</p></blockquote>
+<h2>Threat Model: What Can Go Wrong</h2>
+<p>An agent harness holds <strong>full filesystem and command-execution capability</strong>. Threats layer by severity:</p>
+<table><thead><tr><th>Threat</th><th>Example</th><th>Defense</th></tr></thead><tbody><tr><td>Malicious prompt injection</td><td>Web content induces the model to run <code>rm -rf /</code></td><td>approval policy (ask/never) + sandbox (read-only)</td></tr><tr><td>Misoperation</td><td>The model edits the wrong file or runs the wrong command</td><td>observation policy (read before write), plan mode, diff rendering</td></tr><tr><td>Credential leakage</td><td>The model prints an API key to output</td><td>credential isolation (references only, never values), environment clearing</td></tr><tr><td>Runaway loop</td><td>Repeatedly requesting the same denied operation</td><td>monotonic guard, denial tracking, turn termination</td></tr><tr><td>Recursive delegation explosion</td><td>A subagent delegates subagents without bound</td><td><code>delegationDepth</code> budget, <code>maxDepth</code> cap</td></tr><tr><td>Telemetry leakage</td><td>Anonymous identity and behavioral data exposed externally</td><td>anonymous UUID, disableable telemetry, explicit disclosure</td></tr></tbody></table>
+<h2>Defense in Depth: Four Layers</h2>
+<pre><code class="language-text">Layer 1: what the model sees (prompt engineering)
+  system-prompt assembly · persona · plan:policy soft guidance
+        ↓
+Layer 2: is the operation allowed (approval)
+  tools/pre-execute → ApprovalPolicy: ask | never
+  ToolGuard (monotonic, cannot be revoked)
+        ↓
+Layer 3: what the process can touch (sandbox)
+  ctx.sandbox → SandboxMode: read-only | workspace-write | danger-full-access
+  bwrap/Landlock/Seatbelt/Windows-ACL backends
+        ↓
+Layer 4: what happened (audit and persistence)
+  session event log · approval/asked + approval/decided audit pair
+  hook/invoked + hook/result · model-visible means logged</code></pre>
+<h2>How the Defenses Work Together</h2>
+<h3>Approval: ask/never</h3>
+<p>Every sensitive operation passes through the <code>tools/pre-execute</code> waterfall before dispatch (see <a href="permission-model.html">approval model</a>):</p>
+<ul><li><code>ask</code> (default): delegates to the answerer chain (UI channel / ACP machine decision); with no answerer it fails closed to <code>unavailable</code></li><li><code>never</code>: deterministically returns <code>rejected</code>, <strong>enforced inside the service, before waterfall dispatch</strong> — even an answerer registered later with <code>prepend</code> cannot bypass it</li></ul>
+<h3>Sandbox: A Second Defense Beyond the Permission System</h3>
+<p>Even when approval grants passage, processes still run under the sandbox policy (see <a href="sandbox.html">sandbox mechanics</a>): <code>read-only</code> denies writes, <code>workspace-write</code> confines to the workspace root and temporary areas, <code>danger-full-access</code> bypasses isolation (the consumer spawns the raw argv directly, without calling <code>ctx.sandbox</code>). <strong>Approval and sandbox are configured independently and enforced independently</strong> — plan mode's read-only, no-write stance is soft guidance; the real write restriction comes from the sandbox policy.</p>
+<h3>Credentials: Values Never Land in Configuration</h3>
+<ul><li>settings sections and cordis.yml entries carry only <strong>credential references</strong> (<code>CredentialRef</code>); values belong to the <code>ctx.credentials</code> provider (env/file layer)</li><li>Keys are write-only: the Web UI page only receives desensitized descriptors, plaintext keys are stored in <code>$DSH_HOME/.credentials.yaml</code>, and settings keep only the reference</li><li>The local shell executor <strong>clears credentials from the environment</strong> before merging the caller's env</li><li>Consumers re-resolve references per operation — credential rotation requires no restart</li></ul>
+<h3>Identity: Anonymous and Auditable</h3>
+<p>The anonymous identity is <strong>a random UUID, one per harness home</strong> (<code>$DSH_HOME/.anonymous-user-id</code>), never derived from hostname/network/git; deleting the file resets it, and different homes cannot be linked. Telemetry is reported via <code>ctx.sessionTelemetry</code>, and <code>DSH_TELEMETRY_DISABLED</code> can disable export (see <a href="../internals/telemetry-identity.html">identity and telemetry</a>).</p>
+<h2>Denial-Tracking Protection</h2>
+<p>The monotonic guard guarantees <strong>no mechanism can flip a denied call back to allowed</strong>: after the allow/deny/ask decision of <code>tools/pre-execute</code>, <code>ToolGuard</code> can only return a denial reason or <code>undefined</code> — so listener order can never turn a deny into an allow. This is the most fundamental difference from permission models whose &quot;rules can be overridden.&quot;</p>
+<h2>Safety-Related Configuration at a Glance</h2>
+<table><thead><tr><th>Configuration</th><th>Location</th><th>Effect</th></tr></thead><tbody><tr><td><code>approval/policy</code></td><td>session policy</td><td><code>ask</code> / <code>never</code></td></tr><tr><td><code>sandbox/mode</code></td><td>sandbox policy</td><td><code>read-only</code> / <code>workspace-write</code> / <code>danger-full-access</code></td></tr><tr><td>permission preset</td><td><code>dsh-permission-presets</code></td><td>binds sandbox + approval into named presets</td></tr><tr><td><code>DSH_TELEMETRY_DISABLED</code></td><td>environment variable</td><td>stops telemetry export</td></tr><tr><td><code>enableRunInBackground</code></td><td>bash tool config</td><td>removes the background-run argument</td></tr><tr><td><code>delegationDepth</code></td><td>session metadata</td><td>subagent recursion budget</td></tr></tbody></table>
+<h2>Conclusion</h2>
+<p>DeepSeek Harness's safety philosophy fits in one sentence: <strong>separate &quot;what the model wants to do&quot; (approval) from &quot;what the process can do&quot; (sandbox), make every decision auditable (logging), and make the defenses unbypassable (monotonicity)</strong>. The next three pages break down the approval model, the sandbox mechanics, and plan mode one by one.</p>
+      <div class="pagenav"><a class="card prev" href="../extensibility/sdk.html"><div class="label">Previous</div><div class="title">SDK and Protocols: Automation Access</div></a><a class="card next" href="permission-model.html"><div class="label">Next</div><div class="title">The Approval Model: ask/never Decisions</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

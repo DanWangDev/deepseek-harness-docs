@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Context Compaction: Managing Memory — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item active" href="compaction.html">Context Compaction: Managing Memory</a><a class="item" href="token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../context/compaction.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Context Engineering / Context Compaction: Managing Memory</div>
+      <h1>Context Compaction: Organizing Memory</h1>
+<blockquote><p>An in-depth look at DeepSeek Harness context compaction: how the <code>compaction/*</code> session events lock, how summary generation replaces a surface range, the difference between pressure and manual compaction, and how tool-result pruning frees space.</p></blockquote>
+<h2>Why Compaction Is Needed</h2>
+<p>The context window is finite. A long session's log keeps growing and eventually exceeds the model's context window. Compaction <strong>folds a stretch of history into a summary</strong>: the log is never deleted (append-only), but old nodes in the derived history are <strong>replaced</strong> by a single summary node (surface <code>replace</code>).</p>
+<p>Compaction is an <strong>optional capability</strong>, not part of the agent loop spine—Service Definition (<code>dsh-compaction</code>, <code>ctx.compaction</code>), Service Provider (e.g. the <code>dsh-compaction-basic</code> backend), Consumer (the <code>dsh-command-compact</code> human command).</p>
+<h2>The <code>compaction/*</code> Session Events</h2>
+<p>Compaction extends <code>SessionEventMap</code> with three event types via declaration merging, all of which are <strong>log-only</strong>—they record locks, summaries, the selected range, shadowed event seqs, token counts, and model calls, and <strong>never enter the surface</strong>:</p>
+<table><thead><tr><th>Event</th><th>Payload</th><th>Purpose</th></tr></thead><tbody><tr><td><code>compaction/start</code></td><td><code>{ turn }</code></td><td>Acquires the logged lock; a number identifies an unfinished automatic turn, <code>null</code> an independent manual attempt</td></tr><tr><td><code>compaction/summary</code></td><td><code>{ summary, rawOutput?, shadowedRange, shadowedSeqs, shadowedTokenCount, provider, model, maxTokens?, usage? }</code></td><td>The safe summary projection, the shadowed surface boundary pairs and seqs, the estimated token count, and the envelope of the summary call</td></tr><tr><td><code>compaction/end</code></td><td><code>{ turn, error? }</code></td><td>Releases the lock (<code>error</code> records a failed attempt)</td></tr></tbody></table>
+<p><strong>The lock brackets the whole operation</strong>: <code>compaction/start</code> is appended first, then summary generation runs and the <code>compaction/summary</code> and <code>user/message</code> replacement are written, and only then is <code>compaction/end</code> appended. Releasing the lock last means a crash mid-operation shows up as a detectable leftover lock (a start without a matching end), never as an end that falsely claims completion.</p>
+<p>The summary itself rides on a separate <code>user/message</code> carrying <code>surfaceOp: { op: 'replace', start, end }</code>—<strong>this is the only surface change summary compaction performs</strong>:</p>
+<pre><code class="language-text">Log (append-only, never deleted)
+  … user/message(seq 40) … tool/result(seq 55) …
+  compaction/start (seq 60, turn=7)
+  compaction/summary (seq 61)
+  user/message: summary (seq 62, surfaceOp replace 40..55)
+  compaction/end (seq 63, turn=7)
+
+Derived history (surface)
+  … [summary replaced all nodes 40..55] …</code></pre>
+<h2>Triggering</h2>
+<table><thead><tr><th>Trigger</th><th>API</th><th>Semantics</th></tr></thead><tbody><tr><td>Automatic pressure</td><td><code>compactIfNeeded(agent, trigger, signal)</code></td><td><code>trigger</code> is <code>'pressure'</code> (the pressure policy) or <code>'context-overflow'</code> (normalized overflow, which can sit below the ordinary threshold to force bounded reduction)</td></tr><tr><td>Manual</td><td><code>compactNow(agent, signal)</code></td><td>Runs as agent maintenance between turns; returns <code>null</code> and writes nothing when no valid range exists</td></tr><tr><td>Region</td><td><code>compactRegion(...)</code></td><td>Targets an explicit surface range, inclusive at both ends</td></tr></tbody></table>
+<p>Pressure compaction runs in the serial <code>agent/pre-step</code>, ahead of request derivation. Recovery from a failed request runs through <code>agent/request-error</code>: a retry action is returned only when the surface replacement generation advances.</p>
+<h2>Failure Classification for Manual Compaction</h2>
+<pre><code class="language-ts">/** Expected failure classes for an explicit idle-session compaction request. */
+type ManualCompactionErrorCode =
+  | 'busy' | 'cancelled' | 'changed' | 'summary' | 'commit' | 'persistence'</code></pre>
+<p><code>changed</code> and <code>summary</code> leave the session surface unchanged but still close the failed attempt and persist it to the log. <code>commit</code> can occur after a partial change; <code>persistence</code> means the in-memory marker pair was closed but the flush failed.</p>
+<h2>Tool-Result Pruning</h2>
+<p>An optional tool-result pruning service (<code>dsh-compaction-tool-result-pruner</code>) runs before pressure compaction selects a range: it replaces bulky <code>tool/result</code> contents with trimmed versions and reports each persistent content replacement plus the total reduction in Unicode code points:</p>
+<pre><code class="language-ts">/** Aggregate outcome of one stable-surface pruning pass. */
+interface PruneResult {
+  readonly pruned: readonly PrunedEntry[]   // per entry: originalSeq → replacementSeq + char counts
+  readonly charsRemoved: number
+}</code></pre>
+<p>After pruning, the surface is re-measured through <code>ctx.tokenMeter</code>, and <strong>it can advance without generating a summary</strong>.</p>
+<h2>Region Boundaries: Tool Pairing</h2>
+<p>Region boundaries <strong>preserve tool call/result pairing but not whole turns</strong>—so a step closed early inside an oversized turn can be compacted. <code>toolPairingBalancedBefore(session, seq)</code> and <code>toolPairingBalancedAfter(session, seq)</code> check the pairing before/after a seq; they validate membership in the current surface and reject missing seqs and orphaned results.</p>
+<h2>Relationship to the Token Budget</h2>
+<p>The space compaction frees is measured by <code>ctx.tokenMeter</code>, described in <a href="token-budget.html">Token Budget and Request Headers</a>: estimation and replay are owned directly by the singleton token meter, while <code>dsh-compaction-basic</code> owns the retention policy, event ordering, per-route summary calls, and their configuration—<strong>the seam does not own the metering API</strong>.</p>
+      <div class="pagenav"><a class="card prev" href="../tools/workflow.html"><div class="label">Previous</div><div class="title">Workflows: Scripted Multi-Agent Orchestration</div></a><a class="card next" href="token-budget.html"><div class="label">Next</div><div class="title">Token Budgets and the Request Header</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

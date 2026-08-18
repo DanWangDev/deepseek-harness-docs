@@ -1,83 +1,92 @@
 [
   {
     "section": "介绍",
+    "sectionEn": "Introduction",
     "items": [
-      { "file": "introduction/what-is-deepseek-harness", "title": "什么是 DeepSeek Harness" },
-      { "file": "introduction/architecture-overview", "title": "架构全景：插件化分层详解" },
-      { "file": "introduction/why-this-whitepaper", "title": "为什么写这份白皮书" }
+      { "file": "introduction/what-is-deepseek-harness", "title": "什么是 DeepSeek Harness", "titleEn": "What is DeepSeek Harness" },
+      { "file": "introduction/architecture-overview", "title": "架构全景：插件化分层详解", "titleEn": "Architecture Overview: The Plugin-Based Layering" },
+      { "file": "introduction/why-this-whitepaper", "title": "为什么写这份白皮书", "titleEn": "Why This Whitepaper" }
     ]
   },
   {
     "section": "核心机制",
+    "sectionEn": "Core Mechanics",
     "items": [
-      { "file": "core/cordis", "title": "Cordis：一切皆插件的基座" },
-      { "file": "core/the-loop", "title": "Agentic Loop：自主循环的核心" },
-      { "file": "core/session", "title": "会话日志：事件溯源的唯一真源" },
-      { "file": "core/system-prompt", "title": "System Prompt 动态组装" },
-      { "file": "core/scope", "title": "Agent 作用域：可见性即生命周期" }
+      { "file": "core/cordis", "title": "Cordis：一切皆插件的基座", "titleEn": "Cordis: The Everything-Is-a-Plugin Foundation" },
+      { "file": "core/the-loop", "title": "Agentic Loop：自主循环的核心", "titleEn": "The Agentic Loop: Core of the Autonomous Loop" },
+      { "file": "core/session", "title": "会话日志：事件溯源的唯一真源", "titleEn": "The Session Log: The Event-Sourced Source of Truth" },
+      { "file": "core/system-prompt", "title": "System Prompt 动态组装", "titleEn": "Dynamic System Prompt Assembly" },
+      { "file": "core/scope", "title": "Agent 作用域：可见性即生命周期", "titleEn": "Agent Scope: Visibility Is Lifecycle" }
     ]
   },
   {
     "section": "工具系统",
+    "sectionEn": "Tool System",
     "items": [
-      { "file": "tools/what-are-tools", "title": "工具系统设计：AI 的双手" },
-      { "file": "tools/filesystem", "title": "文件系统工具：原子读写编辑" },
-      { "file": "tools/shell-execution", "title": "命令执行：Bash 与 PowerShell" },
-      { "file": "tools/search-navigation", "title": "搜索与导航：glob/grep 定位" },
-      { "file": "tools/task-management", "title": "任务管理：todo_write 快照" },
-      { "file": "tools/web", "title": "Web 访问：搜索与抓取" },
-      { "file": "tools/subagent", "title": "子 Agent：委派与编排" },
-      { "file": "tools/workflow", "title": "工作流：脚本化多 Agent 编排" }
+      { "file": "tools/what-are-tools", "title": "工具系统设计：AI 的双手", "titleEn": "Tool System Design: The AI's Hands" },
+      { "file": "tools/filesystem", "title": "文件系统工具：原子读写编辑", "titleEn": "Filesystem Tools: Atomic Read, Write, Edit" },
+      { "file": "tools/shell-execution", "title": "命令执行：Bash 与 PowerShell", "titleEn": "Command Execution: Bash and PowerShell" },
+      { "file": "tools/search-navigation", "title": "搜索与导航：glob/grep 定位", "titleEn": "Search and Navigation: glob/grep Locating" },
+      { "file": "tools/task-management", "title": "任务管理：todo_write 快照", "titleEn": "Task Management: The todo_write Snapshot" },
+      { "file": "tools/web", "title": "Web 访问：搜索与抓取", "titleEn": "Web Access: Search and Fetch" },
+      { "file": "tools/subagent", "title": "子 Agent：委派与编排", "titleEn": "Subagents: Delegation and Orchestration" },
+      { "file": "tools/workflow", "title": "工作流：脚本化多 Agent 编排", "titleEn": "Workflows: Scripted Multi-Agent Orchestration" }
     ]
   },
   {
     "section": "上下文工程",
+    "sectionEn": "Context Engineering",
     "items": [
-      { "file": "context/compaction", "title": "上下文压缩：记忆的整理术" },
-      { "file": "context/token-budget", "title": "Token 预算与请求头" }
+      { "file": "context/compaction", "title": "上下文压缩：记忆的整理术", "titleEn": "Context Compaction: Managing Memory" },
+      { "file": "context/token-budget", "title": "Token 预算与请求头", "titleEn": "Token Budgets and the Request Header" }
     ]
   },
   {
     "section": "Agent 机制",
+    "sectionEn": "Agent Mechanics",
     "items": [
-      { "file": "agent/preset", "title": "Agent Preset：按会话组装能力" },
-      { "file": "agent/goal", "title": "同会话目标：持久完成目标" },
-      { "file": "agent/self-modification", "title": "自我修改：插件即运行时" }
+      { "file": "agent/preset", "title": "Agent Preset：按会话组装能力", "titleEn": "Agent Presets: Composing Capabilities Per Session" },
+      { "file": "agent/goal", "title": "同会话目标：持久完成目标", "titleEn": "Same-Session Goals: Persistent Completion Objectives" },
+      { "file": "agent/self-modification", "title": "自我修改：插件即运行时", "titleEn": "Self-Modification: Plugins as the Runtime" }
     ]
   },
   {
     "section": "可扩展性",
+    "sectionEn": "Extensibility",
     "items": [
-      { "file": "extensibility/plugins", "title": "插件开发：从注册到生效" },
-      { "file": "extensibility/hooks", "title": "Hooks：Claude Code/Codex 桥接" },
-      { "file": "extensibility/skills", "title": "Skills：技能系统" },
-      { "file": "extensibility/sdk", "title": "SDK 与协议：自动化接入" }
+      { "file": "extensibility/plugins", "title": "插件开发：从注册到生效", "titleEn": "Plugin Development: From Registration to Effect" },
+      { "file": "extensibility/hooks", "title": "Hooks：Claude Code/Codex 桥接", "titleEn": "Hooks: Bridging Claude Code and Codex" },
+      { "file": "extensibility/skills", "title": "Skills：技能系统", "titleEn": "Skills: The Skill System" },
+      { "file": "extensibility/sdk", "title": "SDK 与协议：自动化接入", "titleEn": "SDK and Protocols: Automation Access" }
     ]
   },
   {
     "section": "安全",
+    "sectionEn": "Safety",
     "items": [
-      { "file": "safety/why-safety-matters", "title": "安全至关重要：威胁模型" },
-      { "file": "safety/permission-model", "title": "审批模型：ask/never 决策" },
-      { "file": "safety/sandbox", "title": "沙箱机制：进程隔离" },
-      { "file": "safety/plan-mode", "title": "计划模式：先看后做" }
+      { "file": "safety/why-safety-matters", "title": "安全至关重要：威胁模型", "titleEn": "Safety Matters: The Threat Model" },
+      { "file": "safety/permission-model", "title": "审批模型：ask/never 决策", "titleEn": "The Approval Model: ask/never Decisions" },
+      { "file": "safety/sandbox", "title": "沙箱机制：进程隔离", "titleEn": "The Sandbox: Process Isolation" },
+      { "file": "safety/plan-mode", "title": "计划模式：先看后做", "titleEn": "Plan Mode: Look Before You Act" }
     ]
   },
   {
     "section": "功能与使用",
+    "sectionEn": "Features & Usage",
     "items": [
-      { "file": "features/web-ui", "title": "Web UI：浏览器中的控制台" },
-      { "file": "features/providers", "title": "模型提供方：多端点路由" },
-      { "file": "features/commands", "title": "人类命令：斜杠平面" },
-      { "file": "features/jobs", "title": "后台任务：长时运行管理" }
+      { "file": "features/web-ui", "title": "Web UI：浏览器中的控制台", "titleEn": "Web UI: The Console in Your Browser" },
+      { "file": "features/providers", "title": "模型提供方：多端点路由", "titleEn": "Model Providers: Multi-Endpoint Routing" },
+      { "file": "features/commands", "title": "人类命令：斜杠平面", "titleEn": "Human Commands: The Slash Plane" },
+      { "file": "features/jobs", "title": "后台任务：长时运行管理", "titleEn": "Background Jobs: Managing Long-Running Work" }
     ]
   },
   {
     "section": "内部机制",
+    "sectionEn": "Internals",
     "items": [
-      { "file": "internals/layout", "title": "仓库布局：包的地图" },
-      { "file": "internals/invariants", "title": "运行时不变式：架构的自证" },
-      { "file": "internals/telemetry-identity", "title": "身份与遥测：匿名与审计" }
+      { "file": "internals/layout", "title": "仓库布局：包的地图", "titleEn": "Repository Layout: A Map of Packages" },
+      { "file": "internals/invariants", "title": "运行时不变式：架构的自证", "titleEn": "Runtime Invariants: The Architecture Proving Itself" },
+      { "file": "internals/telemetry-identity", "title": "身份与遥测：匿名与审计", "titleEn": "Identity and Telemetry: Anonymity and Auditing" }
     ]
   }
 ]

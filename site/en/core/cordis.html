@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Cordis: The Everything-Is-a-Plugin Foundation — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item active" href="cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../core/cordis.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Core Mechanics / Cordis: The Everything-Is-a-Plugin Foundation</div>
+      <p>﻿# Cordis: The Foundation of Everything-as-a-Plugin</p>
+<blockquote><p>Cordis is the vendored plugin framework underneath DeepSeek Harness: plugins contribute services, typed events, and reversible side effects to a shared context. Understand Cordis's five core concepts and you understand all of dsh.</p></blockquote>
+<h2>Five Core Concepts</h2>
+<ul><li><strong>A plugin is an object that implements a Service.</strong> It can be a function with optional <code>inject</code> and <code>apply(ctx)</code> fields, or a <code>Service</code> subclass whose lifecycle Cordis mounts into the current context.</li><li><strong>A context is a container of services.</strong> A service occupies a stable <code>ctx.&lt;key&gt;</code> (such as <code>ctx.tools</code>, <code>ctx.llm</code>, <code>ctx.sessions</code>); other plugins look up services by key rather than importing a concrete implementation.</li><li><strong>Declare service dependencies via <code>inject</code>.</strong> Once a plugin declares the services it needs, it waits for those services to be ready before starting; load order is expressed through service dependencies, not hand-orchestrated startup sequences.</li><li><strong>Typed events are used for communication.</strong> Services register event names via TypeScript declaration merging, then dispatch them as <code>emit</code>, <code>waterfall</code>, <code>parallel</code>, or <code>serial</code>.</li><li><strong>Registrations are reversible side effects.</strong> Prompt sections, tool schemas, adapters, providers, and listeners are installed via <code>ctx.effect()</code> or <code>ctx.on()</code> and unwind as expected on reload and teardown.</li></ul>
+<h2>Dispatch Modes</h2>
+<p>Each event has one of the following dispatch modes and can only be dispatched through the corresponding method:</p>
+<table><thead><tr><th>Mode</th><th>Awaited?</th><th>Dispatch order</th><th>Returns a value?</th></tr></thead><tbody><tr><td><code>emit</code></td><td>No</td><td>Listeners observe in registration order</td><td>No</td></tr><tr><td><code>waterfall</code></td><td>No</td><td>Listeners observe in registration order</td><td>Yes</td></tr><tr><td><code>parallel</code></td><td>Yes</td><td>All listeners observe the event in parallel</td><td>No</td></tr><tr><td><code>serial</code></td><td>Yes</td><td>Listeners observe in registration order</td><td>Yes</td></tr></tbody></table>
+<p>The dispatch mode is part of an event's public contract. New harness events record their mode via the <code>@mode</code> tag so the generated catalog can cross-check declarations against dispatch call sites.</p>
+<h2>Waterfall Semantics: Around-Middleware</h2>
+<p><code>ctx.waterfall</code> is <strong>around-middleware</strong>. A listener receives <code>(...args, next)</code>. Calling <code>next()</code> runs the downstream listeners; the downstream return value comes back through <code>next()</code> to the current wrapping layer, which may wrap it and continue returning outward. <strong>Returning without calling <code>next()</code> short-circuits</strong>:</p>
+<pre><code class="language-text">Outermost listener (waterfall listener A)
+  └─ next() ──► downstream listener B
+                 └─ next() ──► default behavior (the caller)
+                 ◄─ return value ───┘
+  ◄─ wrapped return ──┘</code></pre>
+<p>Cooperative listeners typically mutate a shared request or decision object, then delegate. A listener may also choose to fully replace the result — downstream listeners will only see the replaced result. Use <code>prepend: true</code> only when a listener must run before ordinary registrations.</p>
+<p>For single-decision events, short-circuiting is <strong>by design</strong>: a policy listener that holds the decision may return without calling <code>next()</code> (such as <code>agent/pre-step</code>'s reject or <code>tools/pre-execute</code>'s deny), while listeners that only annotate or observe must delegate.</p>
+<h2>Typed Events: Declaration Merging</h2>
+<p>Nearly every extensible union type in dsh follows the same pattern: an interface keyed by discriminant tags (<code>…Map</code>), with the union derived via <code>keyof</code>. <strong>Plugins add variants through declaration merging — without modifying the package that owns the type</strong>:</p>
+<pre><code class="language-ts">// Schematic of the pattern
+interface ThingMap {
+  'a': { kind: 'a' }
+  'b': { kind: 'b' }
+}
+type ThingKind = keyof ThingMap        // 'a' | 'b'
+type Thing = ThingMap[keyof ThingMap]  // discriminated union
+
+// A plugin extends it without touching the source package
+declare module '@deepseek-ai/dsh-session' {
+  interface SessionEventMap {
+    'my-plugin/event': MyPayload
+  }
+}</code></pre>
+<p>Six canonical maps use this pattern: <code>ContentBlockMap</code>, <code>MessageSourceMap</code>, <code>FinishReasonMap</code> (dsh-llm), and <code>TurnTriggerMap</code>, <code>TurnEndReasonMap</code>, <code>SessionEventMap</code> (dsh-session). The two large unions consumers most often <code>switch</code> on are <code>StreamChunk</code> (the streaming protocol) and <code>SessionEvent</code> (log entries) — <code>switch</code> on the tag, each branch narrows the type, and a misspelled tag fails to compile.</p>
+<h2>Loader Configuration: <code>!!js</code> and Overlays</h2>
+<p><code>@deepseek-ai/cordis-plugin-include</code> parses <code>!!js</code> as an expression node. After the declared injections activate, the loader interpolates an entry's <code>config</code> against that plugin's context, and interpolates its <code>disabled</code> field against the loader context at each mount decision; all other entry metadata stays literal. <strong>When environment selects plugins, use overlays</strong> (for example, stacking <code>--profile headless</code> with <code>--patch</code>), rather than hardcoding conditional logic in the configuration.</p>
+<h2>Practical Rules</h2>
+<ul><li>Encapsulate behavior as plugins: tool-pipeline events belong to <code>ctx.tools</code>, model streaming to <code>ctx.llm</code>, live agent coordination to <code>ctx.agents</code></li><li>Prefer events for interception and policy; prefer service methods for direct capability calls</li><li>Every registration should have a corresponding disposer: either return one from <code>ctx.effect()</code>, or let Cordis's helper methods handle it automatically</li><li>If teardown order matters, put the related work in the same effect so resources are released in the expected order</li></ul>
+<h2>From Framework to Product</h2>
+<p>Cordis provides the generic skeleton of &quot;plugin + context + event&quot;; DeepSeek Harness defines the product vocabulary on top of it: <code>SessionEventMap</code> (session facts), <code>ctx.tools</code> (the tool registry), <code>agent/*</code> events (active agents), and capability seams (the Service Definition / Provider / Consumer triad). The following chapters unpack this vocabulary one by one — the next stop is the <a href="the-loop.html">Agentic Loop</a> that drives it all.</p>
+      <div class="pagenav"><a class="card prev" href="../introduction/why-this-whitepaper.html"><div class="label">Previous</div><div class="title">Why This Whitepaper</div></a><a class="card next" href="the-loop.html"><div class="label">Next</div><div class="title">The Agentic Loop: Core of the Autonomous Loop</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

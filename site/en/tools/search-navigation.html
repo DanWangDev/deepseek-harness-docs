@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Search and Navigation: glob/grep Locating — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item active" href="search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="web.html">Web Access: Search and Fetch</a><a class="item" href="subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../tools/search-navigation.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Tool System / Search and Navigation: glob/grep Locating</div>
+      <h1>Search and Navigation: Locating with glob/grep</h1>
+<blockquote><p>An analysis of the DeepSeek Harness search and navigation tools: <code>glob</code> file matching and <code>grep</code> content search, high-performance code retrieval built on the bundled ripgrep binary (<code>@vscode/ripgrep</code>), helping the AI locate precisely across millions of lines of code.</p></blockquote>
+<h2>Why Dedicated Search Tools</h2>
+<p>File-read tools are precise access to &quot;known paths&quot;; search tools are discovery access to &quot;unknown locations&quot;. Before acting, the agent must answer three questions:</p>
+<ul><li>Where is this symbol defined? → <code>grep</code></li><li>Which files match this pattern? → <code>glob</code></li><li>What does the project structure look like? → a bounded enumeration via <code>glob(&quot;**/*&quot;)</code></li></ul>
+<p>DeepSeek Harness makes glob/grep <strong>unconditionally available discovery tools</strong> (from <code>dsh-tool-fs-search</code>), spawning the bundled ripgrep binary through <code>ctx.subprocess</code> — no <code>rg</code> installation on the host and no shell layer involved.</p>
+<h2>Execution Path</h2>
+<pre><code class="language-text">Model: grep(&quot;interface Foo&quot;, &quot;src/&quot;)
+  → tools/pre-execute … allow
+  → dsh-tool-fs-search spawns @vscode/ripgrep via ctx.subprocess
+  → runs as an ordinary foreground call, never as a background job
+  → matches grouped by file (search card, shape: 'matches')
+
+Model: glob(&quot;**/*.test.ts&quot;)
+  → the same subprocess path (ripgrep --files mode)
+  → flat path list (search card, shape: 'paths')</code></pre>
+<p>Neither tool depends on a shell — no command injection surface, and no shell environment to configure.</p>
+<h2>Result Caps and Spill</h2>
+<p>Search is a &quot;potentially huge result&quot; — a broad grep can return thousands of lines. The system's handling:</p>
+<ul><li>When results exceed the cap, the <strong>complete formatted list</strong> is saved to a file through the optional <code>ctx.spillStore</code> backend</li><li>The returned location info (the spill path) is available for subsequent reads/searches — in a co-located deployment, if the backend exposes a local path, the model can continue to <code>read</code> that spill file</li><li>The <code>search</code> card's <code>truncated</code>/<code>total</code> fields report whether inline results were truncated — <strong>a UI never presents a partial result as complete</strong></li></ul>
+<p><code>sampleOverCapGlobResults</code> is a config deployments must explicitly opt into (off by default) — it makes glob results return a sample instead of failing when over the cap.</p>
+<h2>Rendering: The search Card</h2>
+<p>A completed search is presented with the <code>{ card: 'search', shape, title?, truncated, total, … }</code> render intent:</p>
+<table><thead><tr><th>shape</th><th>Meaning</th></tr></thead><tbody><tr><td><code>matches</code></td><td>grep results, matching lines grouped by file</td></tr><tr><td><code>paths</code></td><td>glob results, flat path list</td></tr></tbody></table>
+<p>The view <strong>carries no result text</strong> — UIs without a search card fall back to the raw result content. <code>truncated</code>/<code>total</code> let a UI honestly show &quot;only the first N entries are displayed&quot;.</p>
+<h2>Relationship with ripgrep</h2>
+<p><code>@vscode/ripgrep</code> is the precompiled ripgrep binary maintained by the VS Code team, distributed with the npm package:</p>
+<ul><li>Cross-platform (macOS/Linux/Windows) with no system dependencies</li><li>Supports gitignore-aware search semantics (consistent with the editor experience)</li><li>dsh invokes it as a subprocess with <code>CollectedOutput</code>'s bounded collection (truncate + spill), keeping memory under control</li></ul>
+<h2>Tool Schema Highlights</h2>
+<table><thead><tr><th>Tool</th><th>Behavior</th></tr></thead><tbody><tr><td><code>glob</code></td><td>Matches file paths against glob patterns; <code>**</code> matches recursively</td></tr><tr><td><code>grep</code></td><td>Searches file contents with a regular expression; returns matches grouped by file</td></tr></tbody></table>
+<p>Both run as ordinary foreground calls, never as background jobs — search is expected to be fast; genuinely long-running work should use the <a href="../features/jobs.html">background jobs</a> channel.</p>
+<h2>Design Tradeoff: Dedicated Tools vs Shell Commands</h2>
+<p>Like file editing, search goes through dedicated tools rather than shell commands (<code>rg &quot;pattern&quot; src/</code>):</p>
+<ul><li><strong>Schema-ized</strong>: the model gets structured path/match lists instead of text output that must be parsed</li><li><strong>Render intent</strong>: the search card maps directly to the editor/UI's discovery view</li><li><strong>No shell injection surface</strong>: arguments are validated against JSON schema and never interpreted by a shell</li><li><strong>Auditable</strong>: <code>tool/call</code>/<code>tool/result</code> events are fully persisted</li></ul>
+      <div class="pagenav"><a class="card prev" href="shell-execution.html"><div class="label">Previous</div><div class="title">Command Execution: Bash and PowerShell</div></a><a class="card next" href="task-management.html"><div class="label">Next</div><div class="title">Task Management: The todo_write Snapshot</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>The Agentic Loop: Core of the Autonomous Loop — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item active" href="the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../core/the-loop.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Core Mechanics / The Agentic Loop: Core of the Autonomous Loop</div>
+      <p>﻿# The Agentic Loop: The Core Mechanism of the Autonomous Loop</p>
+<blockquote><p>An in-depth analysis of the DeepSeek Harness agent loop driver (<code>packages/core/agent-loop</code>) — the complete state machine from inbox claiming, prompt assembly, streaming model calls, and tool execution to termination decisions, based on the event catalog and type declarations at the source level.</p></blockquote>
+<h2>What Is the Agentic Loop</h2>
+<p>A traditional chatbot: you ask, it answers. DeepSeek Harness is different: you state a requirement, and it may execute multiple consecutive operations before giving you the final result.</p>
+<p>The mechanism behind this is called the <strong>Agentic Loop</strong>. dsh's loop is not a <code>while(true)</code> — it is modeled as <strong>event-driven turn draining</strong>:</p>
+<ul><li><strong>step</strong>: one model request, plus the tool executions triggered by the model's response</li><li><strong>turn</strong>: one draining pass over admitted input in a session, containing zero or more steps; it ends when the model and its tools stop working or a termination policy intervenes</li></ul>
+<p>A turn opens before claiming the first input and closes when no work is owed anymore. <strong>The turn and step boundaries are persistent session events</strong> (<code>turn/start</code>, <code>step/start</code>…), not live emits — so after a crash the loop's complete trajectory can be rebuilt from the log.</p>
+<h2>The Complete Structure of the Loop</h2>
+<p>The driver (<code>ctx.agentLoop</code>) runs inside <code>ctx.agents.withInitiator()</code>; a typical turn contains the following stages:</p>
+<pre><code class="language-text">① inbox claim
+   claim(target): take all next-step inputs + one next-turn message at the turn boundary
+   → agent/pre-step (waterfall): reject or enter(messages)
+
+② prompt assembly
+   ctx.systemPrompt concatenates prompt sections (PromptSection)
+   + ctx.tools.schemas(scope) tool schema allowlist
+   → request/header event: full request envelope written to the log
+
+③ history derivation
+   deriveMessages() projects model history from the session log (the surface is the only source)
+
+④ streaming model call
+   agent/request (waterfall; can replace the frozen call config)
+   → llm/stream → assistant/chunk* (raw chunks) → assistant/message (assembled message)
+
+⑤ tool execution
+   tool/call* → tools/pre-execute (allow/deny/ask)
+   → ToolGuard (monotonic guard) → tools/execute (around dispatch)
+   → tools/post-execute (inspect/replace result) → tool/result*
+
+⑥ continue or terminate
+   Tools still owe another request? next-step input arrived? → claim → next step
+   Otherwise → agent/turn-stopping (serial) → turn/end</code></pre>
+<h2>Stage Details</h2>
+<h3>Stage 1: Inbox Claiming and the pre-step Decision</h3>
+<p>Input reaches the driver through a single inbox. Some messages wake it immediately; injected context stays in the inbox until another message wakes it. The inbox is <strong>two ordered pending-message lists</strong> (a persistent projection):</p>
+<pre><code class="language-ts">/** One of the two ordered pending-message lists owned by an agent. */
+type InboxTarget = 'next-turn' | 'next-step'</code></pre>
+<p><code>claim(target)</code> removes the batch proposed for the step via a pure-deletion splice — <strong>all <code>next-step</code> inputs, plus one <code>next-turn</code> message at the turn boundary</strong> — and emits an <code>agent/inbox/claimed</code> notice for each item.</p>
+<p><code>agent/pre-step</code> is the only serial listener chain before request derivation; it decides what the model sees:</p>
+<pre><code class="language-ts">/** Whether and with which messages the loop enters a proposed step. */
+type PreStepDecision =
+  | { kind: 'reject' }
+  | { kind: 'enter'; messages: UserMessage[] }</code></pre>
+<p>Listeners may rewrite the claimed messages or reject them outright; when the first claim is rejected or rewritten to empty, a persistent turn with no step still closes — the log records the attempt. Step admission also accepts <strong>tool continuations</strong>: between steps, tools may submit an empty claimed batch, letting the loop continue without introducing new input.</p>
+<h3>Stage 2: Prompt Assembly and the Request Header</h3>
+<p>Each step reads the plugin-registered prompt sections (<code>PromptSection</code>, concatenated in ascending <code>order</code>) and the tool schemas (the allowlist projection of <code>ctx.tools.schemas()</code>). The assembled result is written to the log together with the call config as a <strong><code>request/header</code> event</strong> — <code>EpochHeader</code> holds the call config, adapter defaults, the rendered system prompt, and the assembled tool schemas. <strong>Every conversation request is a pure function of the log</strong>.</p>
+<h3>Stage 3: History Derivation</h3>
+<p>Model history is <strong>never stored separately</strong> — <code>Session.deriveMessages()</code> derives it by projecting the session log's surface. <code>user/message</code> carries the exact content; <code>assistant/message</code> is the authoritative assembled message (raw <code>assistant/chunk</code> is skipped during derivation and used only for replay/UI fidelity); <code>tool/result</code> projects to a user message carrying a <code>tool-result</code> block.</p>
+<h3>Stage 4: Streaming Model Calls</h3>
+<p><code>agent/request</code> is a waterfall: <code>await next()</code> yields the call config the machine will use (agent options for the first request, the logged header afterwards); return a replacement to switch. <strong>Model-visible content must use the logged channel — this waterfall cannot rewrite messages</strong>.</p>
+<p><code>llm/stream</code> returns the raw <code>StreamChunk</code> protocol (a closed discriminated union whose <code>switch</code> ends in <code>assertNever</code>): <code>block-start</code>, <code>text-delta</code>, <code>reasoning-delta</code>, <code>tool-call-delta</code>, <code>block-end</code> (carrying the fully assembled <code>ContentBlock</code>), <code>usage</code>, <code>finish</code>. Exceptions thrown by adapters are normalized into a terminal <code>error</code> or <code>aborted</code> finish.</p>
+<h3>Stage 5: Tool Execution</h3>
+<p>A tool call starts with the <code>tool/call</code> event (<code>callId</code> pairs the call with its result; <code>arguments</code> is the raw JSON string produced by the model) and passes through the full pipeline:</p>
+<pre><code class="language-text">tools/pre-execute (waterfall)   → allow | deny | ask (the approval service decides)
+ToolGuard (monotonic)        → returning a reason rejects; cannot be undone
+tools/execute (waterfall)       → around dispatch: timeout, retry, metrics
+tools/post-execute (waterfall)  → accept | replace | block
+finalizeContent (tool-owned) → last-mile content transform
+tools/result (emit)             → frozen final result; observers cannot transform it</code></pre>
+<p>Execution scheduling has two modes: <code>parallel</code> (may overlap with sibling calls; the tool must declare <code>isConcurrencySafe</code>) and <code>exclusive</code> (runs alone, forming an ordering barrier).</p>
+<h2>Termination Conditions</h2>
+<p>A turn ends with a <code>TurnEndReason</code> (a merge-extensible sum type):</p>
+<table><thead><tr><th>Reason</th><th>Meaning</th></tr></thead><tbody><tr><td><code>completed</code></td><td>Normal completion: tools no longer owe requests, no new input</td></tr><tr><td><code>aborted</code></td><td>A cancellation request interrupted the active turn (<code>{ kind: 'user' | 'parent' | 'hook' | 'disposed' }</code>)</td></tr><tr><td><code>blocked</code></td><td>Blocked</td></tr><tr><td><code>error</code></td><td>The turn failed; <code>error</code> is a structured failure (<code>LlmError</code> fact verbatim, or a flattened <code>UNKNOWN</code>)</td></tr><tr><td><code>max-tokens</code></td><td>At least one step hit the output token limit — even if execution continues afterwards, the truncation fact still takes precedence</td></tr><tr><td><code>interrupted</code></td><td>The persistence backend closes crash-leftover turns at reload (the only reason not emitted by the loop)</td></tr></tbody></table>
+<h2>Cancellation and Error Recovery</h2>
+<p><code>Agent.cancel(cause, options)</code> is the only cancellation entry point: it clears queued and steering work (unless <code>keepInbox</code>) and aborts the active turn. cause is a TypeScript-enforced same-process input; the persistent <code>turn/end</code> keeps only the coarse-grained <code>{ kind: 'aborted' }</code>.</p>
+<p><code>agent/request-error</code> runs after the failed model step closes and before the turn closes: a listener that returns <code>{ kind: 'retry' }</code> without calling <code>next()</code> owns the recovery; the default <code>undefined</code> keeps the failure terminal.</p>
+<h2>Why Turn Boundaries Are Persistent</h2>
+<p>Turn and step boundaries are <strong>persistent session events</strong> rather than agent emits, which gives the whole system three properties:</p>
+<ul><li><strong>Crash-recoverable</strong>: <code>interrupted</code> is synthesized by the persistence backend at reload, and events remain intact before the crash</li><li><strong>Replay is reproduction</strong>: any UI can rebuild the complete trajectory from the log, with no live mirror</li><li><strong>Model-visible means logged</strong>: every fact the loop carries is persisted as an event, mechanically verifiable by a runtime invariant</li></ul>
+<h2>Next Stop</h2>
+<p>The conversational vocabulary the loop carries (<code>Message</code>, <code>ContentBlock</code>, <code>StreamChunk</code>) is declared by <code>packages/llm</code>; the log the loop writes is defined by the <a href="session.html">Session Log</a> — that is the next stop for understanding where memory comes from.</p>
+      <div class="pagenav"><a class="card prev" href="cordis.html"><div class="label">Previous</div><div class="title">Cordis: The Everything-Is-a-Plugin Foundation</div></a><a class="card next" href="session.html"><div class="label">Next</div><div class="title">The Session Log: The Event-Sourced Source of Truth</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

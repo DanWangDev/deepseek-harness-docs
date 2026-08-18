@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tool System Design: The AI's Hands — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item active" href="what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="web.html">Web Access: Search and Fetch</a><a class="item" href="subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../tools/what-are-tools.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Tool System / Tool System Design: The AI's Hands</div>
+      <h1>Tool System Design: The AI's Hands</h1>
+<blockquote><p>A deep dive into the DeepSeek Harness tool abstraction: from the <code>ToolDefinition</code> type, the <code>defineTool</code> DSL, the registration mechanism, and the guard-based execution pipeline to the rendering system — how tools become an agent's capability through a unified interface.</p></blockquote>
+<h2>What a Tool Is</h2>
+<p>A registered tool (<code>ToolDefinition</code>) consists of four parts:</p>
+<table><thead><tr><th>Part</th><th>Content</th></tr></thead><tbody><tr><td><strong>Model-facing schema</strong></td><td><code>ToolSchema</code>: <code>name</code>, <code>description</code>, <code>parameters</code> (JSON Schema)</td></tr><tr><td><strong>Canonical output declaration</strong></td><td><code>output</code>: raw JSON Schema + pure projection function (<code>render</code> + optional <code>presentationMeta</code>)</td></tr><tr><td><strong>Execution function</strong></td><td><code>execute(args, exec)</code>: returns the canonical lossless JSON value</td></tr><tr><td><strong>Presentation and scheduling metadata</strong></td><td><code>finalizeContent</code>, <code>timeoutMs</code>, <code>isConcurrencySafe</code>, <code>presentCall</code>, <code>presentResult</code></td></tr></tbody></table>
+<pre><code class="language-ts">/** A registered tool: its schema plus the execution function. */
+interface ToolDefinition extends ToolSchema {
+  /** Mandatory canonical output declaration. */
+  readonly output: ToolOutputDefinition
+  /** Run one accepted call and return only its canonical lossless-JSON value. */
+  execute(args: unknown, exec: ToolRunContext): Promise&lt;unknown&gt;
+  /** Synchronous last-mile transform for model-facing content. */
+  finalizeContent?(exec, result): ContentBlock[] | undefined
+  /** Cooperative tool-call timeout budget in milliseconds. */
+  timeoutMs?: number
+  /** Pure synchronous classifier for overlap with sibling tool calls. */
+  isConcurrencySafe?(args: unknown): boolean
+  /** How to present the PENDING state of one call in a UI. */
+  presentCall?(args: unknown): ToolCallView | undefined
+  /** How to present the COMPLETED state. */
+  presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined
+}</code></pre>
+<p><strong>Execution and presentation callbacks never leak into model requests</strong>: <code>schemas()</code> projects only <code>name</code>/<code>description</code>/<code>parameters</code>.</p>
+<h2><code>defineTool</code>: A Typed Schema DSL</h2>
+<p>First-party tools do not need hand-written validation — <code>defineTool({ name, description, parameters, output, execute, … })</code>:</p>
+<ul><li>Infers the argument types from <code>ParameterSchemaSpec</code> and binds <code>validateArgs()</code></li><li>Infers the function body's return type from <code>OutputSchema</code></li><li>Throws <code>ToolArgsError</code> (<code>INVALID_ARGS</code>) on parameter mismatch; throws <code>ToolOutputError</code> (<code>INVALID_TOOL_OUTPUT</code>) on invalid output</li></ul>
+<p>The value schema vocabulary (<code>ValueSchemaSpec</code>) supports <code>string</code>, <code>number</code>, <code>integer</code>, <code>boolean</code>, <code>null</code>, <code>array</code>, <code>object</code>, the author-side-only <code>json</code>, and <code>oneOf</code>, which requires matching exactly one branch. Precise inference holds to 16 levels of container nesting, then relaxes to <code>JsonValue</code> — avoiding exhausting TypeScript's type instantiation stack.</p>
+<h2>Execution Pipeline: A Guarded Waterfall</h2>
+<p><code>ctx.tools.execute()</code> runs one call through seven stages in order:</p>
+<pre><code class="language-text">tools/pre-execute (waterfall)   → allow | deny | ask
+ToolGuard (monotonic)           → reason = deny; undefined = allow
+tools/execute (waterfall)       → dispatch wrapper: timeout, retry, metrics
+tools/post-execute (waterfall)  → accept | replace | block
+finalizeContent (definition-owned) → exactly-once final content transform
+tools/result (emit)             → frozen final result</code></pre>
+<pre><code class="language-ts">/** Pre-dispatch decision. `allow` runs the call; `deny` materializes an error; `ask` runs only after an approval service returns `allowed-once`. */
+type PreToolDecision =
+  | { kind: 'allow' }
+  | { kind: 'deny'; reason: string }
+  | { kind: 'ask'; reason?: string }</code></pre>
+<p>Key invariants:</p>
+<ul><li><strong>Guards are monotonic</strong>: the <code>ToolGuard</code> return type deliberately omits an allow result — <code>undefined</code> preserves the waterfall's decision, and a returned reason can only reduce permissions, so later listeners cannot undo it</li><li><strong>Arguments cannot be rewritten</strong>: history, audit, UI, and execution must stay consistent</li><li><strong><code>ask</code> fails closed</strong>: unauthorized, missing approval channel or service, or requests without an agent all become denials; only <code>allowed-once</code> proceeds to execution</li><li><strong>Failure does not end the turn</strong>: unknown tools and throwing tools both become structured errors (<code>ToolNotFoundError</code> → <code>UNKNOWN_TOOL</code>); the call fails but the loop continues</li></ul>
+<h2>Execution Scheduling: Parallel and Exclusive</h2>
+<pre><code class="language-ts">/** Scheduling mode for one pending call. `parallel` may overlap with siblings; `exclusive` runs alone and forms an ordering barrier. */
+type ToolExecutionMode =
+  | { kind: 'parallel' }
+  | { kind: 'exclusive' }</code></pre>
+<p>The agent loop queries the registry for each pending call's execution mode and uses it to form exclusive barriers and a rolling pool of parallel execution. Only a classifier that returns exactly <code>true</code> from <code>isConcurrencySafe(args)</code> may run in parallel; unknown, hidden, undeclared, invalid, or throwing classifiers are all <strong>exclusive</strong> (fail-closed). A function body running in parallel must not mutate state owned by its parent.</p>
+<h2>Results: Execution-Time Values vs Persistent Projections</h2>
+<p>A tool's canonical <code>value</code> exists only during execution: the loop persists only <code>content</code>, <code>error</code>, and <code>meta</code>. The registry materializes the persistent presentation fields before <code>tools/result</code>, so <strong>live late observers see the exact execution-time value plus fields that are safe for later persistent appends</strong>. Replay can reproduce the presentation but cannot reconstruct the canonical intermediate value.</p>
+<h2>Render Intent: The Card Vocabulary</h2>
+<p>How a tool wants its call presented in a UI is <strong>provider-agnostic</strong> — <code>presentCall</code>/<code>presentResult</code> return the render intent of a <code>card</code> label, which the UI bridge layer dispatches on:</p>
+<table><thead><tr><th>Card</th><th>Purpose</th></tr></thead><tbody><tr><td><code>generic</code></td><td>Default card (title + raw args)</td></tr><tr><td><code>terminal</code></td><td>Shell command → terminal card (output + exit status)</td></tr><tr><td><code>diff</code></td><td>File creation/modification → inline diff card</td></tr><tr><td><code>search</code></td><td>Completed discovery search (grep matches grouped by file / glob flat path list)</td></tr><tr><td><code>read</code></td><td>Completed file read (line numbers, optional syntax highlighting)</td></tr><tr><td><code>web</code></td><td>Completed web retrieval (structured <code>sources</code>/<code>answer</code>, or <code>url</code>/<code>statusCode</code>)</td></tr></tbody></table>
+<p><code>ToolCallKind</code> (<code>'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'fetch' | 'other'</code>) selects icons for generic cards. host/client runtimes project this neutral vocabulary onto their own views.</p>
+<h2>Tool Catalog at a Glance</h2>
+<table><thead><tr><th>Tool family</th><th>Model-visible names</th><th>seam</th></tr></thead><tbody><tr><td>Filesystem</td><td><code>read</code>, <code>write</code>, <code>edit</code>, <code>read_image</code>, <code>glob</code>, <code>grep</code></td><td><code>ctx.fs</code> + <code>ctx.subprocess</code></td></tr><tr><td>Command execution</td><td><code>bash</code>, <code>pwsh</code></td><td><code>ctx.shell</code> + <code>ctx.jobs</code></td></tr><tr><td>Web access</td><td><code>web_search</code>, <code>web_fetch</code></td><td><code>ctx.web</code></td></tr><tr><td>Task management</td><td><code>todo_write</code></td><td>session-owned state</td></tr><tr><td>Delegation</td><td><code>subagent</code>, <code>subagent_fork</code>, <code>send_message</code>, <code>interrupt_agent</code>, <code>list_agents</code>, <code>report</code></td><td><code>ctx.subagents</code></td></tr><tr><td>Orchestration</td><td><code>workflow</code>, <code>ralph</code></td><td><code>ctx.workflowEngine</code></td></tr><tr><td>Skills</td><td><code>skill</code></td><td><code>ctx.skills</code></td></tr><tr><td>Other</td><td><code>ask_user_question</code>, <code>exit_plan_mode</code>, <code>job_<em></code>, <code>terminal_</em></code>, <code>session_<em></code>, <code>create_goal</code>/<code>get_goal</code>/<code>update_goal</code>, <code>lsp</code>, <code>schedule_</em></code></td><td>each own seam</td></tr></tbody></table>
+<p>The following pages break down these tool families one by one.</p>
+      <div class="pagenav"><a class="card prev" href="../core/scope.html"><div class="label">Previous</div><div class="title">Agent Scope: Visibility Is Lifecycle</div></a><a class="card next" href="filesystem.html"><div class="label">Next</div><div class="title">Filesystem Tools: Atomic Read, Write, Edit</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

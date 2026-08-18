@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Human Commands: The Slash Plane — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item active" href="commands.html">Human Commands: The Slash Plane</a><a class="item" href="jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../features/commands.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Features &amp; Usage / Human Commands: The Slash Plane</div>
+      <h1>Human Commands: The Slash Plane</h1>
+<blockquote><p>Slash-prefixed directives that human-facing adapters interpret and execute through <code>ctx.commands</code> — <strong>they never become model messages</strong>. They differ both from model-facing tools and from shell commands executed through <code>ctx.shell</code>.</p></blockquote>
+<h2>The Command Plane</h2>
+<p>Human commands (<code>/plan</code>, <code>/goal</code>, <code>/compact</code>, …) are the <strong>discovery, parsing, dispatch, cancellation, and result-rendering</strong> mechanism owned by UI adapters and command plugins:</p>
+<pre><code class="language-text">User input: /plan
+  → adapter parses → parseCommand() → ParsedCommand
+  → scope resolution → CommandDescriptor (read-only view without a handler)
+  → command/run event (records rawInput)
+  → run the handler against the exact agent
+  → CommandResult presented directly to the UI (not a tool result, not a session event)
+  → command/done event</code></pre>
+<p>Unless a handler changes the durable domain another way, <strong>command output is UI state</strong> — commands need no model turn and no <code>tool/call</code>/<code>tool/result</code> events.</p>
+<h2>Definition</h2>
+<pre><code class="language-ts">/** Plugin-owned command registration. */
+interface CommandDefinition {
+  /** Lowercase command name without the leading slash. */
+  readonly name: string
+  /** Human-readable summary used in discovery UI. */
+  readonly description: string
+  /** Optional free-form input hint advertised to capable clients. */
+  readonly input?: CommandInputDescriptor
+  /** Whether command/run records rawInput. Defaults to true. */
+  readonly recordInput?: boolean
+  /** Execute against the receiving agent without sending the command to the model. */
+  readonly handler: (invocation: CommandInvocation) =&gt; CommandResult | Promise&lt;CommandResult&gt;
+}</code></pre>
+<h2>Invocation and Result</h2>
+<pre><code class="language-ts">/** Invocation passed to one registered command handler. */
+interface CommandInvocation {
+  readonly commandId: CommandId     // pairs with the command/run event
+  readonly agent: Agent             // the exact target agent
+  readonly rawInput: string         // exact text after the name (including the separator)
+  readonly signal: AbortSignal      // cancellation signal owned by the UI request
+}
+
+type CommandResult =
+  | { kind: 'success'; text?: string; sourceEventSeq?: number }
+  | { kind: 'error'; text: string }</code></pre>
+<p><code>sourceEventSeq</code> is an optional field, valid only for success results: it points at an earlier non-command event in the receiving session log — <code>command/done</code> persists the same reference, letting clients merge the command lifecycle with that domain projection.</p>
+<h2>Commands Shipped with the Distribution</h2>
+<table><thead><tr><th>Command</th><th>Provider</th><th>Behavior</th></tr></thead><tbody><tr><td><code>/plan [off|message]</code></td><td><code>dsh-plan-mode</code></td><td>toggles plan mode; a non-empty message selects plan mode first, then submits via <code>agent.steer()</code> (see <a href="../safety/plan-mode.html">plan mode</a>)</td></tr><tr><td><code>/goal</code></td><td><code>dsh-command-goal</code></td><td>observes or changes the current goal (see <a href="../agent/goal.html">same-session goals</a>)</td></tr><tr><td><code>/compact</code></td><td><code>dsh-command-compact</code></td><td>manual compaction (see <a href="../context/compaction.html">context compaction</a>)</td></tr><tr><td><code>/list-agents</code></td><td>standalone plugin</td><td>lists active agents (via session projections and the live registry)</td></tr></tbody></table>
+<h2>The Boundary with Tools and Shell</h2>
+<table><thead><tr><th>Dimension</th><th>Human command</th><th>Model tool</th><th>Shell command</th></tr></thead><tbody><tr><td>Triggered by</td><td>human</td><td>model</td><td>model (via the bash tool) or plugin</td></tr><tr><td>Produces a model message</td><td>no</td><td>yes (tool/call event)</td><td>yes</td></tr><tr><td>Needs a model turn</td><td>no</td><td>yes</td><td>yes</td></tr><tr><td>Result goes to</td><td>UI state</td><td>session log + UI</td><td>session log + UI</td></tr><tr><td>Example</td><td><code>/plan</code></td><td><code>bash</code>, <code>read</code></td><td><code>pnpm run test</code></td></tr></tbody></table>
+<h2>Registering a Command</h2>
+<pre><code class="language-ts">import { Context } from '@deepseek-ai/cordis'
+
+export function apply(ctx: Context) {
+  ctx.commands.register({
+    name: 'mystat',
+    description: 'Print workspace statistics.',
+    handler: async ({ agent }) =&gt; {
+      const n = agent.session.events.length
+      return { kind: 'success', text: `Session has ${n} events.` }
+    },
+  })
+}</code></pre>
+<p>Command availability is decided by plugin composition: every adapter that consumes the registry sees all effective definitions.</p>
+      <div class="pagenav"><a class="card prev" href="providers.html"><div class="label">Previous</div><div class="title">Model Providers: Multi-Endpoint Routing</div></a><a class="card next" href="jobs.html"><div class="label">Next</div><div class="title">Background Jobs: Managing Long-Running Work</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

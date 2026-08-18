@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Subagents: Delegation and Orchestration — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="web.html">Web Access: Search and Fetch</a><a class="item active" href="subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../tools/subagent.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Tool System / Subagents: Delegation and Orchestration</div>
+      <h1>Subagents: Delegation and Orchestration</h1>
+<blockquote><p>A source-level analysis of the DeepSeek Harness subagent seam: how one agent delegates work to subagents, the lifecycle differences between one-shot and continuable background subagents, and how the <code>send_message</code>/<code>interrupt_agent</code>/<code>list_agents</code> control tools operate.</p></blockquote>
+<h2>Capability Positioning</h2>
+<p>The subagent seam lets one agent delegate work to subagents. Like bash, it is an <strong>optional capability</strong> outside the agent loop — but unlike other capability seams: <strong>multiple provider implementations can coexist in the same context</strong>, registered by name (<code>ctx.subagents</code>), whereas bash allows only one executor.</p>
+<table><thead><tr><th>Role</th><th>Package</th></tr></thead><tbody><tr><td>Service Definition</td><td><code>dsh-subagent</code> (<code>ctx.subagents</code> + vocabulary)</td></tr><tr><td>Service Provider (six)</td><td><code>dsh-subagent-spawn-in-process</code>, <code>-fork</code>, <code>-acp</code>, <code>-codex</code>, <code>-claude-code</code>, <code>-dsh-sdk</code></td></tr><tr><td>Consumer</td><td><code>dsh-tool-subagent</code> (delegation), <code>dsh-tool-subagent-control</code> (<code>send_message</code>/<code>interrupt_agent</code>/<code>list_agents</code>), <code>dsh-tool-subagent-report</code> (child-side <code>report</code>)</td></tr></tbody></table>
+<p>Providers range from &quot;spawn a new subagent&quot; (in-process) to &quot;delegate a turn to another product&quot; (codex/claude-code/acp) — one interface, many worlds.</p>
+<h2>Two Kinds of Capabilities, Two Discovery Styles</h2>
+<p>Providers advertise their <strong>start-time</strong> features through a static descriptor:</p>
+<pre><code class="language-ts">/** Which START-TIME features a provider supports. */
+interface SubagentCapabilities {
+  readonly outputSchema: boolean
+  readonly depthLimit: boolean
+  readonly toolFilter: boolean
+  readonly persona: boolean
+}</code></pre>
+<p>A request that depends on a capability the provider lacks is <strong>explicitly rejected</strong> (<code>SubagentError('UNSUPPORTED_CAPABILITY')</code>) — never accepted and silently ignored. <strong>Continuable</strong> subagents are assembled by the continuation executor manager itself, using method presence as the capability (<code>prepareContinuable</code>).</p>
+<h2>One-Shot Start Request</h2>
+<pre><code class="language-ts">/** What a caller asks for when starting a ONE-SHOT subagent. */
+interface SubagentStartRequest {
+  readonly label?: string
+  /** Content delivered as the child's user message. */
+  readonly prompt: ContentBlock[]
+  /** The spawning agent. */
+  readonly parent: Agent
+  /** Cancellation signal from the spawning context (the tool's exec.signal). */
+  readonly signal: AbortSignal
+  readonly agentOptions?: AgentOptions
+  readonly outputSchema?: ObjectJsonSchema   // requires capability
+  readonly maxDepth?: number                  // requires depthLimit
+  readonly toolFilter?: ToolRestriction       // requires toolFilter
+  readonly persona?: string                   // requires persona
+}</code></pre>
+<ul><li><strong><code>toolFilter</code></strong>: the in-process backend applies <code>tools.restrict()</code> in the child's creation window — filtered tools disappear from the child's prompt <strong>and refuse execution</strong> (&quot;visibility, not permission&quot;), with loud validation of unknown names</li><li><strong><code>persona</code></strong>: registered as the child's <code>deployment:persona</code> section, shadowing the deployment persona (strict <code>{{…}}</code> interpolation)</li><li><strong><code>maxDepth</code></strong>: absolute delegation depth ceiling (a non-negative safe integer)</li><li><strong><code>outputSchema</code></strong>: an object-rooted JSON Schema (the <code>assertObjectJsonSchema</code> subset); a successful child returns a matching <code>structured</code> value</li></ul>
+<h2>Continuable Subagents and Activation</h2>
+<p>A <strong>continuable background subagent</strong> is a persisted subagent session with at most one in-process <strong>Activation</strong> (the period during which a rebuilt subagent is resident):</p>
+<pre><code class="language-text">persisted Session
+  -&gt; optional live Activation
+       -&gt; one retained AgentHandle
+       -&gt; Agent inbox as the only turn FIFO
+       -&gt; zero or more owned child Activations</code></pre>
+<ul><li>An Activation may execute multiple FIFO turns and stays resident while the descendants it created are still running</li><li>The Agent inbox is the <strong>single queue</strong>: every continuation message becomes an <code>Agent.followup()</code> FIFO turn, and accepted messages share one observable order</li><li><code>followup()</code> routing depends only on Activation residency: <code>running</code> → enqueue; <code>waiting</code> → wake; no Activation → <strong>cold resume</strong> a new Activation</li></ul>
+<p>Authorization for follow-up operations comes from the exact online Agent tool context: the authenticated Agent must be the persisted subagent's <strong>direct parent</strong> as recorded in <code>SessionHeader.parentSession</code>.</p>
+<h2>Control Tools</h2>
+<table><thead><tr><th>Tool</th><th>Behavior</th></tr></thead><tbody><tr><td><code>subagent</code></td><td>Delegates by provider (default <code>continuable</code>; runs in the background when arguments are omitted; the runtime delivers results automatically)</td></tr><tr><td><code>subagent_fork</code></td><td>Bound to the fork backend (<code>one-shot</code>; runs in the foreground when arguments are omitted)</td></tr><tr><td><code>send_message</code></td><td>Delivers follow-up messages to a continuable subagent (FIFO turns)</td></tr><tr><td><code>interrupt_agent</code></td><td>Calls <code>Agent.cancel(cause, { keepInbox: true })</code> on an online target — after the interrupt, one wake-up send resumes the paused FIFO queue</td></tr><tr><td><code>list_agents</code></td><td>Lists active subagents and descendants read-only (backed by session storage and the live registry)</td></tr><tr><td><code>report</code></td><td>The return channel registered by continuable in-process children: writes a user-role message to the direct parent session</td></tr></tbody></table>
+<p><code>interrupt_agent</code> authorization: <code>{ kind: 'user', parentSessionId }</code> (a human client presenting the persisted direct-parent address) or <code>{ kind: 'ancestor', agent }</code> (the online ancestor chain contains the caller). A wrong parent address is rejected with <code>UNAUTHORIZED</code>.</p>
+<h2>Delegation Depth and Budget</h2>
+<p><code>delegationDepth</code> is persistent session metadata — the subagent recursion budget survives restarts. A request's <code>maxDepth</code> limits the child's computed depth: delegations beyond the budget are rejected at start, preventing runaway recursive delegation loops.</p>
+<h2>Boundary with Workflows</h2>
+<p><a href="workflow.html">Workflows</a> (the <code>workflow</code> tool) are &quot;model-written orchestration scripts that start subagents&quot; — the script starts subagents through <code>agent()</code>, and each subagent is owned by the Agent that initiated the run. subagent is a one-shot/continuable delegation primitive; workflow is scripted batch orchestration. The Ralph loop is a &quot;foreground fresh-agent workflow toward an immutable objective&quot; (see <a href="workflow.html">workflows</a>).</p>
+      <div class="pagenav"><a class="card prev" href="web.html"><div class="label">Previous</div><div class="title">Web Access: Search and Fetch</div></a><a class="card next" href="workflow.html"><div class="label">Next</div><div class="title">Workflows: Scripted Multi-Agent Orchestration</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

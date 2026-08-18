@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Workflows: Scripted Multi-Agent Orchestration — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="web.html">Web Access: Search and Fetch</a><a class="item" href="subagent.html">Subagents: Delegation and Orchestration</a><a class="item active" href="workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../tools/workflow.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Tool System / Workflows: Scripted Multi-Agent Orchestration</div>
+      <h1>Workflows: Scripted Multi-Agent Orchestration</h1>
+<blockquote><p>The workflow seam lets an agent run <strong>model-written orchestration scripts that start subagents</strong> (the <code>workflow</code> tool): the script is plain JavaScript executed in a vm context on a worker thread, fanning out to multiple subagents through the <code>agent()</code>/<code>pipeline()</code>/<code>parallel()</code> hooks.</p></blockquote>
+<h2>Capability Positioning</h2>
+<p>Like subagents, workflows are an <strong>optional capability</strong> outside the agent loop. Like bash, only one engine implementation may provide <code>ctx.workflowEngine</code> per context — there is no named provider registry; a second engine replaces the first via plugin config.</p>
+<table><thead><tr><th>Role</th><th>Package</th></tr></thead><tbody><tr><td>Service Definition</td><td><code>dsh-workflow</code> (<code>ctx.workflowEngine</code> + vocabulary)</td></tr><tr><td>Service Provider</td><td><code>dsh-workflow-worker-thread</code> (<code>node:worker_threads</code> engine — one worker per run, with the script's vm context inside it)</td></tr><tr><td>Consumer</td><td><code>dsh-tool-workflow</code> (the <code>workflow</code> tool)</td></tr></tbody></table>
+<h2>Start Request</h2>
+<pre><code class="language-ts">/** What a caller asks for when starting a workflow run. */
+interface WorkflowStartRequest {
+  /** The plain-JS script body (top-level await allowed; ends with `return &lt;json-value&gt;`). */
+  script: string
+  /** The workflow's identity block, as plain JSON data (shape-validated by the engine). */
+  meta: WorkflowMeta
+  /** Optional input exposed verbatim to the script as the `args` global. */
+  args?: unknown
+  /** Optional engine-wide child-provider override for this run. */
+  subagentProvider?: string
+  /** Optional per-run total-child ceiling. */
+  maxTotalAgents?: number
+  /** The agent on whose behalf the run executes (parent of every child). */
+  parent: Agent
+  signal?: AbortSignal
+}</code></pre>
+<p><code>meta</code> and <code>args</code> are plain JSON data; the engine schema-validates <code>meta</code> and rejects invalid data with a loud error before any work begins — <strong>the engine never obtains them by evaluating the script text</strong>. <code>parent</code> is a required field — every subagent the script starts is owned by it; cwd, lineage, and depth are passed through the subagent seam.</p>
+<h2>Script Hooks</h2>
+<p>Four orchestration primitives are available in scripts (plus <code>phase(title)</code> progress declarations and <code>log(message)</code> narration):</p>
+<table><thead><tr><th>Hook</th><th>Behavior</th></tr></thead><tbody><tr><td><code>agent(prompt, opts?)</code></td><td>Runs one subagent to completion; with <code>opts.schema</code>, validates and returns a structured object; resolves <code>null</code> on failure</td></tr><tr><td><code>pipeline(items, ...stages)</code></td><td>Runs each item through the stages in sequence with <strong>no barrier between stages</strong>; a stage throw drops that item to <code>null</code> and skips its remaining stages</td></tr><tr><td><code>parallel(thunks)</code></td><td>Runs zero-argument functions concurrently and awaits all (a barrier); a throw resolves <code>null</code></td></tr><tr><td><code>phase(title)</code> / <code>log(message)</code></td><td>Progress presentation: <code>phase()</code> calls match <code>meta.phases</code> titles for observers; <strong>implies no execution structure</strong></td></tr></tbody></table>
+<h2>Failure Discipline: <code>WorkflowError.fatal</code></h2>
+<p>Hook misuse inside scripts — bad arguments, unknown or deferred <code>agent()</code> options, schemas outside the structured-output subset, exceeded caps, seam start failures, cancellation — all throw <code>WorkflowError</code> with <code>fatal: true</code>:</p>
+<ul><li>The <code>parallel()</code>/<code>pipeline()</code> combinators <strong>re-throw</strong> fatal errors directly instead of mapping the item to <code>null</code></li><li>A misspelled option must fail loudly and terminate the script, never dissolve into what looks like an ordinary subagent failure</li><li>Per-item <code>null</code> is reserved for child run failures (non-<code>completed</code> stop reasons) and ordinary script errors within a stage</li></ul>
+<h2>Live Runs and Terminal States</h2>
+<pre><code class="language-ts">/** Holder-owned live workflow. result never rejects; consumers may cancel and must call dispose(). */
+interface WorkflowRun {
+  readonly id: WorkflowRunId
+  readonly meta: WorkflowMeta
+  readonly result: Promise&lt;WorkflowResult&gt;
+  cancel(reason?: string): void
+  dispose(): Promise&lt;void&gt;
+}</code></pre>
+<ul><li><code>result</code> never rejects: a script failure settles as <code>stopReason: 'error'</code></li><li>After a run is cancelled, the result settles to <code>cancelled</code> within the engine's <strong>bounded grace period</strong>, after which the worker-thread engine terminates the worker hosting the script — consumers awaiting <code>result</code> never hang indefinitely</li><li><code>dispose()</code> performs cancellation, waits for bounded settlement, and waits for subagents to fully stop</li></ul>
+<pre><code class="language-ts">interface WorkflowResult {
+  value: unknown          // the script's materialized return value (host JSON; null when nothing is returned)
+  stopReason: WorkflowStopReason  // 'completed' | 'cancelled' | 'error'
+  error?: string
+  agentsStarted: number   // the number of agent() calls accepted during the run
+}</code></pre>
+<h2>Events and Persistent Records</h2>
+<p>The <code>workflow/*</code> events (<code>workflow/start</code>, <code>workflow/phase</code>, <code>workflow/log</code>, <code>workflow/agent-start</code>, <code>workflow/agent-end</code>, <code>workflow/end</code>) are <strong>observation-only</strong> emits: payloads begin with <code>WorkflowRunInfo</code> (id + meta) rather than the live run, so subscribers cannot obtain <code>cancel</code>/<code>dispose</code>; <code>workflow/end</code> deliberately omits the result value. Each emit is isolated per listener — an exception thrown by a subscriber is logged and does not propagate.</p>
+<p>The top-level consumer projects presentation facts onto the parent Session that invoked it: it writes <code>tool-workflow/run-start</code> once the run is accepted, and <code>tool-workflow/run-end</code> once the result is obtained and dispose has fully stopped (<code>runId + seq</code> paired members). <code>dsh-tool-workflow/invariant</code> validates the same protocol: exactly one start per run, member ends must pair, and no updates after the run ends.</p>
+<h2>Typical Use</h2>
+<pre><code class="language-js">// Example script the model writes for the workflow tool
+const files = await agent({ label: 'list-packages', prompt: 'Enumerate all packages in the repository' }, {
+  schema: { type: 'object', properties: { pkgs: { type: 'array', items: { type: 'string' } } }, required: ['pkgs'] },
+})
+phase('audit')
+const results = await parallel(files.pkgs.map(pkg =&gt; () =&gt;
+  agent({ label: pkg, prompt: `Audit ${pkg}'s dependencies` })))
+return { results }</code></pre>
+<p>A workflow is the ability to &quot;write fan-out as code&quot;: one call, multiple subagents executed in parallel or in a pipeline, results returned structurally — this is the scale path for multi-agent orchestration. The Ralph loop is its specialization (a foreground fresh-agent workflow toward an immutable objective); the <code>ralph</code> tool starts a fresh structured child each Round.</p>
+      <div class="pagenav"><a class="card prev" href="subagent.html"><div class="label">Previous</div><div class="title">Subagents: Delegation and Orchestration</div></a><a class="card next" href="../context/compaction.html"><div class="label">Next</div><div class="title">Context Compaction: Managing Memory</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

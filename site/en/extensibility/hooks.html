@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Hooks: Bridging Claude Code and Codex — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="plugins.html">Plugin Development: From Registration to Effect</a><a class="item active" href="hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="skills.html">Skills: The Skill System</a><a class="item" href="sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../extensibility/hooks.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Extensibility / Hooks: Bridging Claude Code and Codex</div>
+      <h1>Hooks: Claude Code/Codex Bridging</h1>
+<blockquote><p>Explains DeepSeek Harness's Hooks bridging from the source code: how Claude Code and Codex <code>hooks.json</code> events are bridged onto the harness's typed interception points—the <code>dsh-hook-protocol</code> shared protocol library plus the two bridge plugins <code>dsh-hooks-claude-code</code> / <code>dsh-hooks-codex</code>.</p></blockquote>
+<h2>Design Philosophy: the Canonical Extension Surface Is the Harness's Interception Points</h2>
+<p>A &quot;native hook&quot; in DeepSeek Harness is just an <strong>ordinary plugin</strong>—typed interception points such as <code>agent/pre-step</code> and <code>tools/pre-execute</code> are the canonical extension surface. The Hooks bridge is only an <strong>external <code>hooks.json</code> compatibility path</strong>: it keeps your existing Claude Code/Codex hooks configuration working on dsh.</p>
+<table><thead><tr><th>Package</th><th>Role</th></tr></thead><tbody><tr><td><code>dsh-hook-protocol</code></td><td>Shared wire-protocol <strong>library</strong> (not a plugin; registers and injects nothing): matcher, <code>runHook</code>, output parsing and merging</td></tr><tr><td><code>dsh-hooks-claude-code</code></td><td>Claude Code hooks bridge (Cordis plugin)</td></tr><tr><td><code>dsh-hooks-codex</code></td><td>Codex hooks bridge (Cordis plugin)</td></tr></tbody></table>
+<h2>Protocol Library Primitives</h2>
+<pre><code class="language-text">matchesMatcher(matcher, subject)   — claude mode: literal-or-regex; codex: always regex
+runHook(bash, hook, opts, now)     — stdin payload + env via ctx.shell; timeoutSec or 10-minute default
+parseHookOutput(output)            — exit 2 blocks; others non-blocking
+mergeHookOutputs(...)              — permission deny &gt; ask &gt; allow; halt is sticky; additionalContext accumulates</code></pre>
+<p><code>runHook</code> never throws—when the executor rejects, it returns a <code>HookOutput</code> with exitCode <code>undefined</code>. Merge rules: permission <strong>deny &gt; ask &gt; allow</strong>, halt is sticky, block reasons are joined with <code>\n\n</code>, and <code>additionalContext</code>/<code>systemMessages</code> accumulate in order.</p>
+<h2>Session Events: hook/invoked and hook/result</h2>
+<p>The bridge layer records a pair of <strong>log-only</strong> session events for every hook invocation:</p>
+<ul><li><code>hook/invoked</code> + <code>hook/result</code> are paired by <code>handlerId</code></li><li><code>stderrSummary</code> is truncated to <code>stderrSummaryMaxChars</code> (default 500)</li><li>not a <code>SurfaceEventType</code>—never enters the model transcript, but durably auditable</li><li>recording must happen inside an already-open turn (<code>SessionStart</code> produces no hook records; it runs before turn 1)</li></ul>
+<h2>Claude Code Bridge Event Mapping</h2>
+<table><thead><tr><th>CC hook event</th><th>Harness interception point</th><th>Behavior</th></tr></thead><tbody><tr><td><code>SessionStart</code></td><td><code>agent/session-start</code> (emit)</td><td>Injects <code>agent.inject()</code> context</td></tr><tr><td><code>UserPromptSubmit</code></td><td><code>agent/pre-step</code> (waterfall)</td><td>deny → <code>PreStepDecision.reject</code></td></tr><tr><td><code>PreToolUse</code></td><td><code>tools/pre-execute</code> (waterfall)</td><td>deny/ask → <code>PreToolDecision.deny/ask</code></td></tr><tr><td><code>PostToolUse</code></td><td><code>tools/post-execute</code> (waterfall)</td><td>Inspects/replaces the result</td></tr><tr><td><code>Stop</code></td><td><code>agent/turn-stopping</code> (serial)</td><td>Forces the next step via <code>steer()</code></td></tr><tr><td><code>SubagentStart</code> / <code>SubagentStop</code></td><td><code>subagent/start</code> / <code>subagent/end</code> (emit)</td><td>Injects / observes only</td></tr></tbody></table>
+<p>Matcher subjects: tool names, the session source, and the constant <code>agent_type</code> = <code>general-purpose</code>. Multiple hooks at the same interception point run serially, folded most-restrictively. stdin carries <code>session_id</code> + <code>transcript_path</code> (via <code>ctx.sessionPersistence.locate(session.header)</code>).</p>
+<h2>The Codex Bridge</h2>
+<p>The Codex bridge covers 5 of the 10 hook points (<code>PreToolUse</code>/<code>PostToolUse</code>/<code>SessionStart</code>/<code>UserPromptSubmit</code>/<code>Stop</code>); differences:</p>
+<ul><li><strong>regex-only</strong> matcher (no literal mode)</li><li>snake_case payload plus <code>turn_id</code>/<code>model</code>, <strong>no trailing newline</strong></li><li>no plugin env, no pre-tool approval/rewrite</li><li><code>block</code> (exit 2) → <code>PreStepDecision.reject</code> / <code>PreToolDecision.deny</code></li><li><code>transcript_path</code> sends <code>null</code> when absent</li></ul>
+<h2>Configuration</h2>
+<pre><code class="language-yaml"># claude-code bridge (illustrative)
+hooks-claude-code:
+  config:
+    configPath: .claude/settings.json   # existing hooks.json location
+    pluginRoot: .claude/plugins
+    projectDir: .
+    defaultTimeoutMs: 600000
+    stderrSummaryMaxChars: 500</code></pre>
+<p>Both bridges' <code>configPath</code> is process-level (per-session hook config is an unimplemented TODO).</p>
+<h2>Blocking Text and Injection Sources</h2>
+<p>Injected context carries an explicit source <code>{ kind: 'plugin', plugin: 'hooks-claude-code' | 'hooks-codex' }</code>; blocking text is precise, e.g. <code>blocked by PreToolUse hook</code>—the model can clearly distinguish &quot;blocked by a hook&quot; from &quot;tool failure&quot;.</p>
+<h2>Working with the Permission Model</h2>
+<p>The hooks PreToolUse bridge inserts into the <code>tools/pre-execute</code> waterfall—before or after the approval service depending on registration order, but always passing through the monotonic <code>ToolGuard</code> (see <a href="../safety/permission-model.html">Approval Model</a>): a hook can deny, but it cannot flip a call denied by another component back to allow.</p>
+      <div class="pagenav"><a class="card prev" href="plugins.html"><div class="label">Previous</div><div class="title">Plugin Development: From Registration to Effect</div></a><a class="card next" href="skills.html"><div class="label">Next</div><div class="title">Skills: The Skill System</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

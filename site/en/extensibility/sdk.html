@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>SDK and Protocols: Automation Access — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="skills.html">Skills: The Skill System</a><a class="item active" href="sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../extensibility/sdk.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Extensibility / SDK and Protocols: Automation Access</div>
+      <h1>SDK and Protocol: Automation Access</h1>
+<blockquote><p>DeepSeek Harness's automation access surfaces: the TypeScript SDK over newline-delimited JSON-RPC 2.0, the automation-only Agent Client Protocol (ACP) server, the <code>dsh</code> CLI's profile system, and the Python SDK—four entry points, the same agent core.</p></blockquote>
+<h2>The Four Access Surfaces at a Glance</h2>
+<pre><code class="language-text">┌─────────────────────────────────────────────────────────┐
+│                   The same agent core                   │
+│   ctx.agents / ctx.agentLoop / ctx.sessions / ctx.tools  │
+└─────────────────────────────────────────────────────────┘
+     ▲              ▲               ▲              ▲
+     │              │               │              │
+  Web UI       CLI (dsh)      JSON-RPC SDK    ACP server
+  (browser)  (web/headless)  (TS + Python) (automation client)</code></pre>
+<h2>The JSON-RPC SDK</h2>
+<p>Three packages under <code>packages/sdk</code>:</p>
+<table><thead><tr><th>Package</th><th>Responsibility</th></tr></thead><tbody><tr><td><code>dsh-sdk-protocol</code></td><td>Newline-delimited JSON-RPC 2.0 transport: one compact JSON frame per line; id+method = request, id = response, method = notification; malformed lines are ignored</td></tr><tr><td><code>dsh-sdk-client</code></td><td>TypeScript client</td></tr><tr><td><code>dsh-sdk-jsonrpc-server</code></td><td>stdio server: get-or-create one agent per <code>sessionId</code>; <strong>stdout carries protocol frames only</strong></td></tr></tbody></table>
+<p><strong>The wire surface</strong> (three methods + four notifications):</p>
+<pre><code class="language-text">initialize → { serverInfo: { name: 'deepseek-harness-sdk-runtime', version } , maxTokens }
+session/prompt { sessionId, content } → { messageId }      ← returns a receipt on enqueue
+shutdown → flush → dispose → exit 0
+
+Notifications: session.event (all sessions, unfiltered) / session.status (running/idle)
+      subagent.started / subagent.finished (in-process only)</code></pre>
+<p>Known limitations: no protocol version negotiation (<code>serverInfo.version</code> is <code>0.0.1</code> and unvalidated), and no cancel/session-close methods.</p>
+<h2>ACP: Automation Only</h2>
+<p><code>@deepseek-ai/dsh-acp</code> is an <strong>Agent Client Protocol</strong> server (JSON-RPC over stdio, <code>AgentSideConnection</code> driving <code>ctx.agents</code>)—a <strong>transport adapter</strong> that exposes no UI concepts such as editor navigation/replay/commands/modes.</p>
+<table><thead><tr><th>Method</th><th>Behavior</th></tr></thead><tbody><tr><td><code>initialize</code></td><td>Advertises only the image prompt on demand; advertises no session/editor/terminal/fs/MCP capabilities</td></tr><tr><td><code>session/new</code></td><td>A fresh agent with an absolute cwd; rejects non-empty <code>additionalDirectories</code>/<code>mcpServers</code></td></tr><tr><td><code>session/prompt</code></td><td>Order-preserving text plus inline images; one in-flight per session; reports <code>end_turn</code>/<code>cancelled</code> at quiescence</td></tr><tr><td><code>session/update</code></td><td>Emits <code>agent_message_chunk</code> per committed <code>assistant/message</code> chunk</td></tr><tr><td><code>session/request_permission</code></td><td>Bridge-owned approval requests carrying a tool call id: one-shot allow/reject</td></tr></tbody></table>
+<p>Limitations: fresh sessions only, raster images only (PNG/JPEG/WebP/GIF), committed answers only. The primary client is <code>dsh-subagent-acp</code>; <code>pnpm run demo:acp</code> starts the demo.</p>
+<h2>Typert: Type-Safe Remote Calls</h2>
+<p>The Host↔Client remote method call layer (<code>ctx.typert</code> + <code>ctx.typertGateway</code>): business services declare methods open to the Client with <code>@Remote</code> / <code>@RemoteScope(key)</code>; complex Host objects map to wire identities through <code>TypertLookupMap</code> (e.g. <code>Agent</code> → <code>agentId</code>). Requests send only an endpoint plus named <code>args</code>; cooperative cancellation = the last <code>signal: AbortSignal</code> parameter. The Client uses concrete functions (<code>ctx.remote.&lt;namespace&gt;</code>) rather than a Proxy.</p>
+<h2>CLI: the Profile System</h2>
+<pre><code class="language-sh">dsh web                        # = --profile web alias; starts the Web UI
+dsh --profile headless &quot;task&quot;   # one-shot runner, no server
+dsh --profile &lt;name&gt;           # any named profile ($DSH_HOME/profiles/&lt;name&gt;)
+dsh plugin --profile &lt;name&gt; &lt;pnpm args&gt;
+dsh --profile web --dump-config   # prints the actual composition tree</code></pre>
+<p>Layer order: bundles (in <code>dsh.profile.bundles</code> order) → the profile's <code>cordis.patch.yml</code> → <code>$DSH_HOME/cordis.patch.yml</code> → <code>--patch</code> overlays. The launcher parses only its own flags and hands everything else to the booted profile. <code>headless</code>'s core execution capability is the Code Mode worker: the task is submitted as an ordinary user message, it waits for quiescence, flushes the Session, prints the last non-empty assistant text to stdout, and exits through <code>ctx.appExit</code> (<code>turn/end</code> completed → 0, otherwise 1).</p>
+<h2>The Python SDK</h2>
+<p><code>deepseek-harness-sdk</code> (module <code>deepseek_harness</code>):</p>
+<pre><code class="language-python">from deepseek_harness import DeepSeekHarness
+
+with DeepSeekHarness(
+    provider=&quot;deepseek-official&quot;,
+    model=&quot;deepseek-v4-flash&quot;,
+    max_tokens=49_152,
+    cwd=str(workspace),
+    session_root=str(sessions),
+    cordis=str(config),
+) as harness:
+    result = harness.run(&quot;Inspect the repository and fix the failing tests.&quot;, session_id=&quot;example-001&quot;)
+print(result.final_response)</code></pre>
+<ul><li>the <code>DeepSeekHarness</code> context manager <strong>lazily starts the bundled runtime</strong> (the <code>deepseek-harness-runtime-bin</code> platform wheel) and reuses it until exit—no system Node.js required</li><li>reusing the same harness and session id preserves the Bash processes owned by that session (working directory, exported variables, shell functions)</li><li><code>Session.run()</code> → <code>RunResult(session_id, final_response, finish_reason, events, notifications, session_root)</code></li><li>inherits the <code>DEEPSEEK_BASE_URL</code> / <code>DEEPSEEK_API_KEY</code> environment variables</li></ul>
+<h2>Selection Guide</h2>
+<table><thead><tr><th>Scenario</th><th>Entry point</th></tr></thead><tbody><tr><td>A human working in the browser</td><td><code>dsh web</code> (Web UI)</td></tr><tr><td>One-shot CI/CD tasks</td><td><code>dsh --profile headless &quot;任务&quot;</code></td></tr><tr><td>Driving from a TypeScript program</td><td>JSON-RPC SDK (<code>dsh-sdk-client</code>)</td></tr><tr><td>Driving from a Python program</td><td><code>deepseek-harness-sdk</code></td></tr><tr><td>An automation client (an agent protocol besides MCP)</td><td>ACP server (<code>dsh-acp</code>)</td></tr></tbody></table>
+      <div class="pagenav"><a class="card prev" href="skills.html"><div class="label">Previous</div><div class="title">Skills: The Skill System</div></a><a class="card next" href="../safety/why-safety-matters.html"><div class="label">Next</div><div class="title">Safety Matters: The Threat Model</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

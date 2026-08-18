@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Skills: The Skill System — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item active" href="skills.html">Skills: The Skill System</a><a class="item" href="sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../extensibility/skills.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Extensibility / Skills: The Skill System</div>
+      <h1>Skills: the Skill System</h1>
+<blockquote><p>A deep dive into the DeepSeek Harness Skills system: from disk loading, frontmatter parsing, invocation policy (model/user invocable), and discovery priority to the model-facing <code>skill</code> tool—one complete skill lifecycle chain.</p></blockquote>
+<h2>What a Skill Is</h2>
+<p>A skill is a <strong>reusable task instruction</strong>: <code>&lt;name&gt;/SKILL.md</code> or <code>&lt;name&gt;.md</code>. A skill is optional instruction, not a session event—which is why its vocabulary lives in <code>packages/skill</code> rather than core. The model loads the body on demand through the <code>skill</code> tool, and the body is injected as a user/message via <code>agent.inject()</code> into the next request.</p>
+<h2>Capability Breakdown</h2>
+<table><thead><tr><th>Role</th><th>Package</th></tr></thead><tbody><tr><td>Service Definition</td><td><code>dsh-skill</code> (the <code>ctx.skills</code> registry)</td></tr><tr><td>Service Provider</td><td><code>dsh-skill-filesystem</code> (local-directory provider), <code>dsh-skill-badge</code> (optional bundled-badge provider)</td></tr><tr><td>Consumer</td><td><code>dsh-tool-skill</code> (the model-facing <code>skill</code> tool)</td></tr></tbody></table>
+<h2>The Provider Registry</h2>
+<p><code>ctx.skills</code> composes local, embedded, remote, or other providers:</p>
+<ul><li>registration is synchronous; remote initialization and discovery belong to the await phase of <code>list()</code></li><li>it uses a <strong>host + per-scope layered structure</strong>: registrations land in the layer matching the caller context's scope, and reads merge the global layer with the observing scope's chain—the entry on the nearest layer wins outright for duplicate skill names</li><li>the discovery cache is keyed by the resolved scope chain; provider and runtime changes emit <code>skills/change</code> invalidation events (without a diff; consumers re-<code>snapshot()</code>)</li></ul>
+<pre><code class="language-ts">/** Provider interface for one source of skills, such as local directories or a remote registry. */
+interface SkillProvider {
+  readonly name: string
+  readonly list: (options: SkillLookupOptions) =&gt; Promise&lt;readonly SkillCandidate[] | SkillProviderObservation&gt;
+  readonly get: (candidate: SkillCandidate, options: SkillLookupOptions) =&gt; Promise&lt;SkillDefinition | undefined&gt;
+}</code></pre>
+<h2>Local Discovery Priority</h2>
+<p>The bundled local provider scans each root in rank order:</p>
+<table><thead><tr><th>Rank</th><th>Source</th><th>Root</th></tr></thead><tbody><tr><td>100</td><td><code>project-dsh</code></td><td><code>&lt;projectRoot&gt;/.dsh/skills</code></td></tr><tr><td>200</td><td><code>project-agents</code></td><td><code>&lt;projectRoot&gt;/.agents/skills</code></td></tr><tr><td>300</td><td><code>custom</code></td><td><code>Config.customSkillDirs</code></td></tr><tr><td>400</td><td><code>user-dsh</code></td><td><code>&lt;dshHome&gt;/skills</code></td></tr><tr><td>500</td><td><code>user-agents</code></td><td><code>&lt;agentsHome&gt;/skills</code></td></tr><tr><td>600</td><td><code>bundled</code></td><td><code>Config.bundledSkillDir</code> (when configured)</td></tr></tbody></table>
+<p>The project root is the nearest ancestor containing <code>.git</code> (falling back to the current cwd when none is found); when <code>ctx.fs</code> is available, the upward git-root search probes for <code>.git</code> through the filesystem service, so remote or sandboxed workspaces do not fall back to the host filesystem boundary. Chokidar watches directories for changes; a watcher failure leaves the current observation incomplete but does not hide readable candidates.</p>
+<h2>Invocation Policy: model/user invocable</h2>
+<pre><code class="language-ts">/** Invocation controls shared by skill discovery consumers. */
+interface SkillInvocationPolicy {
+  /** Whether model-facing catalogs and loaders include this skill. */
+  readonly modelInvocable: boolean
+  /** Whether human-facing command catalogs and loaders include this skill. */
+  readonly userInvocable: boolean
+}</code></pre>
+<p>The local provider reads the exactly-named kebab-case frontmatter keys <code>disable-model-invocation</code> and <code>user-invocable</code>; omitted fields default to <code>true</code>. All four combinations are preserved:</p>
+<table><thead><tr><th>modelInvocable</th><th>userInvocable</th><th>Effect</th></tr></thead><tbody><tr><td>true</td><td>true</td><td>invocable by both model and human (default)</td></tr><tr><td>true</td><td>false</td><td>model-invocable only</td></tr><tr><td>false</td><td>true</td><td>human-invocable only (command catalogs)</td></tr><tr><td>false</td><td>false</td><td>retrievable only by trusted <code>ctx.skills.get()</code> callers</td></tr></tbody></table>
+<h2>Skill Identity and Loading</h2>
+<ul><li>names are kebab-case (<code>^[a-z0-9]+(?:-[a-z0-9]+)*$</code>)</li><li>the local provider accepts directory bundles (<code>&lt;name&gt;/SKILL.md</code>) and flat Markdown files (<code>&lt;name&gt;.md</code>); nested recursive <code>**/SKILL.md</code> is not supported</li><li>model-facing session catalogs use only the invocable skills' <code>name</code> and <code>description</code>—<strong>never the body or absolute file paths</strong></li><li>the full <code>SkillSummary</code> carries <code>whenToUse</code> (extra routing guidance), <code>source</code>, <code>provider</code>, and <code>resourceBase</code></li></ul>
+<h2>The Model-Facing Tool</h2>
+<p>The <code>skill</code> tool (<code>dsh-tool-skill</code>):</p>
+<ul><li>the consumer owns both the initial catalog and its replacement: when the catalog changes, it is injected via <code>agent.inject()</code> as a user/message <strong>replacement</strong> (<code>form: 'catalog'</code>)</li><li>the model loads a skill body by name, and the body enters the next request as injected context with <code>form: 'instructions'</code></li><li>when discovery is incomplete (a provider failed), results must not be cached—the consumer keeps the last usable catalog filtered by itself and retries</li></ul>
+<h2>Lifecycle Chain</h2>
+<pre><code class="language-text">Disk (SKILL.md) → provider list() discovery → registry merges layered catalogs
+  → the skill tool lists the catalog (filtered by modelInvocable)
+  → the model calls skill(&quot;graphify&quot;)
+  → the winning provider's get() returns a SkillDefinition
+  → the body is injected via agent.inject() → reaches the request at the next pre-step</code></pre>
+<h2>Comparison with the Reference Implementation</h2>
+<p>Claude Code's Skills system has &quot;budget-aware description truncation, dual-mode execution (inline/fork), a permission allowlist, conditional activation, and dynamic discovery up to remote skill loading&quot;. DeepSeek Harness's version likewise loads from disk and supports frontmatter and dynamic discovery, but <strong>introduces no separate execution mode</strong>—a skill is injected instruction, and execution still goes through the unified tool pipeline; permissions and sandboxing are covered by the existing approval/sandbox policy, so no skill-owned permission allowlist is needed.</p>
+      <div class="pagenav"><a class="card prev" href="hooks.html"><div class="label">Previous</div><div class="title">Hooks: Bridging Claude Code and Codex</div></a><a class="card next" href="sdk.html"><div class="label">Next</div><div class="title">SDK and Protocols: Automation Access</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

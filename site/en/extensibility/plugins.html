@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Plugin Development: From Registration to Effect — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item active" href="plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="skills.html">Skills: The Skill System</a><a class="item" href="sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../extensibility/plugins.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Extensibility / Plugin Development: From Registration to Effect</div>
+      <h1>Plugin Development: From Registration to Effect</h1>
+<blockquote><p>A hands-on walkthrough of the full DeepSeek Harness plugin development chain: from the <code>apply(ctx)</code> entry point, <code>inject</code> dependency declarations, registration side effects and disposers, to distribution as a bundle and patch-layer config overrides.</p></blockquote>
+<h2>A Minimal Plugin</h2>
+<p>A Cordis plugin is an object with optional <code>inject</code> and <code>apply(ctx)</code> fields:</p>
+<pre><code class="language-ts">import { Context } from '@deepseek-ai/cordis'
+
+// declare dependencies: start only when the services are ready
+export const name = 'my-plugin'
+export const inject = ['tools', 'systemPrompt']
+
+export function apply(ctx: Context) {
+  // register a tool (the defineTool DSL handles schema and validation)
+  ctx.tools.register(defineTool({
+    name: 'my_tool',
+    description: 'Do something useful.',
+    parameters: {
+      input: { type: 'string', required: true },
+    },
+    output: { schema: { type: 'object' } },
+    execute: async (args) =&gt; ({ echoed: args.input }),
+  }))
+
+  // register a prompt section (order decides the splice position)
+  ctx.systemPrompt.section({
+    name: 'my-plugin:guidance',
+    order: 120,
+    text: 'When asked about X, prefer Y.',
+  })
+
+  // listen for events (registrations returning a disposer are auto-undone)
+  ctx.on('session/event', (session, event) =&gt; {
+    console.log(session.id, event.type)
+  })
+}</code></pre>
+<p><strong>Registrations are reversible side effects</strong>: <code>ctx.effect()</code> / <code>ctx.on()</code> return disposers; they are undone as expected on reload and teardown. When a plugin unloads, the tools it registered disappear from the prompt and refuse to execute—indistinguishable from tools that never existed.</p>
+<h2>The Five Core Concepts, Reviewed</h2>
+<table><thead><tr><th>Concept</th><th>In the plugin</th></tr></thead><tbody><tr><td>A plugin is an object that implements a Service</td><td>An <code>apply(ctx)</code> function or a <code>Service</code> subclass</td></tr><tr><td>The context is the container of services</td><td>Services are looked up by keys such as <code>ctx.tools</code>, <code>ctx.llm</code>, <code>ctx.sessions</code></td></tr><tr><td><code>inject</code> declares dependencies</td><td>Starts only when the services are ready; load order is expressed through dependencies</td></tr><tr><td>Typed event communication</td><td>Declaration merging extends the event map, dispatched by <code>@mode</code></td></tr><tr><td>Registration is a reversible side effect</td><td>Every registration corresponds to a disposer</td></tr></tbody></table>
+<h2>From Plugin to Bundle</h2>
+<p>For plugin code to reach a running dsh, it needs a <strong>composition entry</strong> (a row in cordis.yml) plus mounting code. A bundle is the distribution format for &quot;config items + mounting code&quot;:</p>
+<pre><code class="language-yaml"># sample cordis.patch.yml (a bundle's patch file)
+services:
+  my-plugin:                      # locates the entry by id
+    config:
+      option: value</code></pre>
+<p>A patch <strong>replaces the whole row</strong> of config by id (no deep-merge); <code>dsh.profile.bundles</code> lists the bundles a profile stacks. Load order: the bundles listed by the profile → the profile's <code>cordis.patch.yml</code> → the home level → any <code>--patch</code> overlay.</p>
+<h2>The Complete Tool-Development Checklist</h2>
+<table><thead><tr><th>Step</th><th>Key points</th></tr></thead><tbody><tr><td>Define the schema</td><td><code>defineTool({ name, description, parameters, output, execute })</code>; <code>parameters</code> is an implicitly open object root, with required properties marked <code>required: true</code></td></tr><tr><td>Declare the output</td><td><code>output.schema</code> (an enforced JSON Schema subset) + <code>render(args, value)</code> as a pure projection</td></tr><tr><td>Handle cancellation</td><td><code>execute</code> must observe or forward <code>exec.signal</code> and settle only after its own work reaches quiescence</td></tr><tr><td>Declare concurrency</td><td><code>isConcurrencySafe(args)</code> returns <code>true</code> when overlapping with siblings is allowed; otherwise stay exclusive</td></tr><tr><td>Declare a timeout</td><td><code>timeoutMs</code> (a cooperative budget; <code>dsh-tool-call-timeout-policy</code> implements the <code>tools/execute</code> wrapper)</td></tr><tr><td>Declare presentation</td><td><code>presentCall</code>/<code>presentResult</code> return card render intents (<code>generic</code>/<code>terminal</code>/<code>diff</code>/<code>search</code>/<code>read</code>/<code>web</code>)</td></tr><tr><td>Write the README</td><td>The package contract: config, semantics, limitations, extension points, and Model Experience</td></tr></tbody></table>
+<h2>Registry API Quick Reference</h2>
+<table><thead><tr><th>Registry</th><th>Method</th><th>Semantics</th></tr></thead><tbody><tr><td><code>ctx.tools</code></td><td><code>register(def)</code> / <code>restrict(filter)</code> / <code>guard(fn)</code> / <code>schemas(scope)</code></td><td>register / filter / monotonic guard / allowlist projection</td></tr><tr><td><code>ctx.systemPrompt</code></td><td><code>section(s)</code> / <code>context(c)</code></td><td>prompt sections / dynamic context</td></tr><tr><td><code>ctx.commands</code></td><td><code>register(def)</code></td><td>human commands (slash commands, not through a model turn)</td></tr><tr><td><code>ctx.jobs</code></td><td><code>start(jobStart)</code></td><td>background task registration</td></tr><tr><td><code>ctx.agents</code></td><td><code>create()</code> / <code>resume()</code></td><td>create / resume agents (through the factory)</td></tr><tr><td><code>ctx.llm</code></td><td>register adapters</td><td>add model providers</td></tr><tr><td><code>ctx.subagents</code></td><td>register providers</td><td>add delegation backends</td></tr></tbody></table>
+<h2>Common Pitfalls</h2>
+<ul><li><strong>waterfall listeners must call <code>next()</code></strong>: returning without it short-circuits—purely observational listeners must delegate</li><li><strong>guards are monotonic</strong>: returning a reason rejects, and no later listener can undo it; a guard has no allow result</li><li><strong>model-visible implies logged</strong>: any new model-visible input requires a new session event, rendered from the log</li><li>**<code>DEFAULT_*</code> constants are not configuration**: deployment-varying options are validated <code>Config</code> fields changeable from cordis.yml</li><li><strong>registry-subject events are not filtered</strong>: events about the registry itself keep unfiltered dispatch</li></ul>
+<h2>Further Resources</h2>
+<ul><li>Tutorial: <a href="https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/cordis-tutorial/index.zh.md">Cordis Tutorial</a> (7 lessons, from your first plugin to harness in practice)</li><li>Hands-on: <a href="https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/cookbook/extension-cookbook.zh.md">Extension Cookbook</a> (feature → capability mapping)</li><li>Package templates: <a href="https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/cookbook/adding-a-package.zh.md">adding-a-package</a>, <a href="https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/cookbook/adding-a-tool.zh.md">adding-a-tool</a></li></ul>
+      <div class="pagenav"><a class="card prev" href="../agent/self-modification.html"><div class="label">Previous</div><div class="title">Self-Modification: Plugins as the Runtime</div></a><a class="card next" href="hooks.html"><div class="label">Next</div><div class="title">Hooks: Bridging Claude Code and Codex</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

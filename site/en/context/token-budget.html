@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Token Budgets and the Request Header — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="compaction.html">Context Compaction: Managing Memory</a><a class="item active" href="token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../context/token-budget.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Context Engineering / Token Budgets and the Request Header</div>
+      <h1>Token Budget and Request Headers</h1>
+<blockquote><p>Reveals DeepSeek Harness token budget management from the source code: how the request envelope is persisted as session state, how route capacity is recorded, and how <code>ctx.tokenMeter</code> estimates by replaying the log—the basis for dynamic context-window computation and automatic compaction triggers.</p></blockquote>
+<h2>The Request Envelope: the Log Is a Pure Function</h2>
+<p>The full envelope of every model request is written to the log as session state—the <code>request/header</code> event:</p>
+<pre><code class="language-text">request/header (reason: 'initial' | 'resume')   ← boundary of each agent loop instance
+request/header (reason: 'change')               ← new full snapshot when the request config changes
+request/context                                 ← recorded when the route or capacity changes</code></pre>
+<pre><code class="language-ts">/** Logged request state outside derived history: call config, system prompt, and tools. */
+interface EpochHeader {
+  config: LlmCallConfig
+  adapterDefaults?: LlmCallConfigAdapterDefaults
+  system?: string
+  tools?: ToolSchema[]
+}</code></pre>
+<p><code>foldRequestHeader(events)</code> reconstructs the request header by selecting the latest snapshot—<strong>every conversational request is a pure function of the log</strong>. An empty system prompt and an empty tool list are both represented as missing fields, matching how requests are built.</p>
+<h2>Route Capacity: request/context</h2>
+<pre><code class="language-ts">/** Registration-bound metadata for one resolved model route. */
+interface RequestContext {
+  provider: string
+  model: string
+  /** Maximum combined request and response context in tokens, when advertised. */
+  contextWindow?: number
+}</code></pre>
+<p><code>request/context</code> is separate logged state, appended right after <code>request/header</code> within the same step, and <strong>only when the provider, model, or capacity differs from the previous record</strong>. Capacity describes the route, not the request input—folding it into <code>EpochHeader</code> would register a capacity change as a <code>change</code> to the request envelope. Routes whose adapter does not advertise capacity are recorded with <code>contextWindow</code> absent.</p>
+<h2>Token Accounting</h2>
+<p>Token accounting reads each step's <code>assistant/chunk { type: 'usage' }</code> records; when no usage chunk exists, <code>assistant/message.usage</code> serves as the fallback for a committed step. A failed model request attempt has no assistant message, so its usage chunk is the persisted accounting record—<strong>model output travels together with its token accounting</strong>; there is no separate usage record.</p>
+<h2><code>ctx.tokenMeter</code>: a Replayable Snapshot</h2>
+<p><code>@deepseek-ai/dsh-token-meter</code> (<code>ctx.tokenMeter</code>, <code>packages/llm/token-meter</code>) provides a standalone immutable replayable snapshot:</p>
+<pre><code class="language-ts">/** Immutable replayable measurement snapshot. */
+interface TokenMeasurement {
+  logRevision: number        // consumed persistent events (= next unread seq)
+  baseline: { kind: 'usage' | 'estimated' }  // anchor
+  surfaceDeltaTokens: number // surface delta since the anchor
+  totalTokens: number
+  surfaceTokens: number
+  nodes: TokenSurfaceNode[]  // { seq, tokens }
+}</code></pre>
+<ul><li><code>baseline.kind</code> distinguishes whether the anchor is the provider-reported exact usage or an estimate</li><li>surface order is authoritative—a replacement node's seq can be higher than that of a later position</li><li>snapshots do not grow with replay folding; the token meter is a <strong>singleton</strong> shared by the compaction seam and metering consumers</li></ul>
+<h2>The Budget Decision Chain</h2>
+<pre><code class="language-text">Request sent → usage chunk persisted (assistant/chunk)
+  → token meter replays the log to estimate current usage
+  → pressure compaction (compactIfNeeded) evaluates:
+      pressure (pressure policy) or context-overflow (normalized overflow)
+  → threshold exceeded → compaction folds old surface into a summary
+  → request header rebuilt → next-turn request</code></pre>
+<p><code>dsh-compaction-basic</code> owns the thresholds, the retained-tail policy, the overflow cap, and failure handling; the token meter is only responsible for &quot;how much is used now&quot;. For the detailed mechanics of compaction, see <a href="compaction.html">Context Compaction</a>.</p>
+<h2>max-tokens Semantics</h2>
+<p>When <code>maxTokens</code> is provided, it must be a positive safe integer limiting the output of each conversational model request; when omitted, the system fills in the exact model's adapter default before writing the request header. As soon as any step within a turn ends with <code>max-tokens</code>, the whole turn ends with <code>max-tokens</code>—the truncation fact takes precedence over <code>completed</code> (see <code>TurnEndReason</code> in <a href="../core/session.html">Session Log</a>).</p>
+      <div class="pagenav"><a class="card prev" href="compaction.html"><div class="label">Previous</div><div class="title">Context Compaction: Managing Memory</div></a><a class="card next" href="../agent/preset.html"><div class="label">Next</div><div class="title">Agent Presets: Composing Capabilities Per Session</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

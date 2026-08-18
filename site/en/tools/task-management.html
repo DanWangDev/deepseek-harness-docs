@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Task Management: The todo_write Snapshot — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item active" href="task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="web.html">Web Access: Search and Fetch</a><a class="item" href="subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../tools/task-management.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Tool System / Task Management: The todo_write Snapshot</div>
+      <h1>Task Management: The todo_write Snapshot</h1>
+<blockquote><p>Unpacking the DeepSeek Harness task management system: how the <code>todo_write</code> tool maintains an agent's todo list through whole-list snapshots — a session state deliberately kept minimal, renderable in the UI as a checklist.</p></blockquote>
+<h2>Why Task Management</h2>
+<p>A long task can span multiple turns: fixing tests, refactoring modules, writing docs. The model needs memory of &quot;where am I, what's next&quot; — not free text hidden in the prompt, but <strong>structured state that renders in the UI and is readable by the model</strong>.</p>
+<p><code>todo_write</code> is that mechanism: session-owned state, and the UI renders the latest <code>todo/write</code> event as a checklist.</p>
+<h2>Data Model: Deliberate Minimalism</h2>
+<pre><code class="language-ts">/** One entry in an agent's todo list — the unit of the `todo/write` event's whole-list snapshot. */
+interface TodoItem {
+  /** What this task is — a short imperative line shown in the UI. */
+  content: string
+  /** Lifecycle state. `in_progress` marks a task being worked now; parallel work may mark several. */
+  status: 'pending' | 'in_progress' | 'completed'
+}</code></pre>
+<p>Note what is <strong>deliberately omitted</strong>: no id, no priority, no <code>activeForm</code> — because the list is <strong>wholly replaced</strong> on every write (last-write-wins), entries need no stable identity. Three statuses describe a complete portable lifecycle.</p>
+<h2>Whole-List Snapshot Semantics</h2>
+<pre><code class="language-text">Model: todo_write([{content: &quot;Fix tests&quot;, status: &quot;in_progress&quot;}, …])
+  → todo/write event: whole-list snapshot
+  → UI renders the latest snapshot as a checklist
+  → the next write replaces the whole list</code></pre>
+<ul><li>Every write is <strong>the entire list</strong>, not an incremental diff — replay only needs to fold in the latest snapshot</li><li><code>todo/write</code> is <strong>log-only UI state</strong>: whole-list snapshot, latest-write-wins on replay; <strong>never enters derived history</strong> (the model does not treat it as a message)</li><li>The model maintains it through tool calls; the UI observes it through <code>session/event</code></li></ul>
+<h2>Parallel Semantics</h2>
+<p><code>allowParallelInProgress</code> is a <strong>required config with no default</strong>:</p>
+<ul><li>Choosing <code>true</code> (the branch the tool catalog presents by default): the description allows multiple <code>in_progress</code> items at once — parallel work may mark several tasks as in progress</li><li>A deployment choosing <code>false</code> gets the same tool, but the description requires exactly 1 active task</li></ul>
+<p>This is a typical example of &quot;config as behavior&quot;: the same tool schema steers the model toward different discipline under the two configurations.</p>
+<h2>Comparison with the Reference Implementation</h2>
+<p>Claude Code's task system is a <strong>dual-track architecture</strong>: in-memory V1 TodoWrite and filesystem V2 Tasks (with dependency management, claim races, and verification nudges). DeepSeek Harness chooses a <strong>single minimal model</strong>:</p>
+<table><thead><tr><th>Dimension</th><th>Claude Code Tasks</th><th>dsh todo_write</th></tr></thead><tbody><tr><td>Storage</td><td>filesystem + in-memory dual track</td><td>session log events (<code>todo/write</code>)</td></tr><tr><td>Entries</td><td>id, dependencies, claims, verification</td><td>one line of content + three-state status</td></tr><tr><td>Updates</td><td>incremental</td><td>whole-list snapshot replacement</td></tr><tr><td>Replay</td><td>requires state reconstruction</td><td>folding the latest snapshot suffices</td></tr></tbody></table>
+<p>Tradeoff: dsh gives up advanced features like dependency management and claim races in exchange for <strong>stateless replay, zero drift, and natural alignment with event sourcing</strong> — task state lives in the same log as the conversation history, and fork/resume/compaction carry it automatically.</p>
+<h2>Tool Schema Highlights</h2>
+<table><thead><tr><th>Tool</th><th>Behavior</th></tr></thead><tbody><tr><td><code>todo_write</code></td><td>Replaces the whole todo list; <code>{ todos: TodoItem[] }</code></td></tr></tbody></table>
+<h2>Usage Patterns</h2>
+<p>The model follows a &quot;plan → execute → update&quot; loop across turns:</p>
+<ol><li>On receiving a request, first decompose the task with <code>todo_write</code></li><li>Update each entry's status as it is completed</li><li>At the end of a turn, the list should be all <code>completed</code> or honestly mark what remains</li></ol>
+<p>The UI renders the latest <code>todo/write</code> event as a checklist — the user sees the agent's &quot;in progress&quot; state in real time, which is also the foundation for long tasks being interruptible and continuable.</p>
+      <div class="pagenav"><a class="card prev" href="search-navigation.html"><div class="label">Previous</div><div class="title">Search and Navigation: glob/grep Locating</div></a><a class="card next" href="web.html"><div class="label">Next</div><div class="title">Web Access: Search and Fetch</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

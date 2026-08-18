@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>The Session Log: The Event-Sourced Source of Truth — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item active" href="session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../core/session.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Core Mechanics / The Session Log: The Event-Sourced Source of Truth</div>
+      <h1>The Session Log: The Single Source of Truth for Event Sourcing</h1>
+<blockquote><p>A <code>Session</code> is an <strong>append-only log</strong> of typed <code>SessionEvent</code>s and the single source of truth for an agent's complete interaction history. The LLM message history is <em>derived</em> from the log, never stored separately — replay simply re-derives from the same set of events.</p></blockquote>
+<h2>The Event-Sourcing Model</h2>
+<p>A DeepSeek Harness session is not an &quot;array of messages&quot; but an <strong>event log</strong>:</p>
+<ul><li>Every entry carries a monotonic <code>seq</code> (<code>seq = log.length</code>), a <code>time</code> (epoch milliseconds), and a <code>data</code> payload discriminated by <code>type</code></li><li>Events are <strong>lossless JSON</strong> — <code>Session.append</code> enforces this at the source, and malformed events never enter the log</li><li>The log only grows, never changes: model history, UI replay, fork, resume, transcript, and telemetry all derive from the same event stream</li></ul>
+<p>The persistence backend (JSONL / SQLite) saves every event losslessly, <strong>including</strong> the raw <code>assistant/chunk</code> chunks — <code>seq</code> must be contiguous, so chunks cannot be filtered out of the canonical log.</p>
+<h2><code>SessionEventMap</code>: The Event Vocabulary</h2>
+<p>The core session events (extensible via declaration merging — plugins add extra event types through <code>declare module</code>):</p>
+<table><thead><tr><th>Event</th><th>Payload</th><th>Purpose</th></tr></thead><tbody><tr><td><code>turn/start</code></td><td><code>{ turn }</code></td><td>Opens a turn; rejection, empty input, cancellation, or failure may close it with no step</td></tr><tr><td><code>turn/end</code></td><td><code>{ turn, reason }</code></td><td>Closes a turn with a <code>TurnEndReason</code></td></tr><tr><td><code>step/start</code> / <code>step/end</code></td><td><code>{ turn, step }</code></td><td>Opens/closes a step (one model call plus the tool executions it requested)</td></tr><tr><td><code>user/message</code></td><td><code>UserMessage</code></td><td>A user-role message: a direct prompt, context injected via <code>agent.inject()</code>, a goal continuation turn</td></tr><tr><td><code>assistant/chunk</code></td><td><code>{ turn, step, chunk }</code></td><td>Raw streaming chunks — token-level replay fidelity</td></tr><tr><td><code>assistant/message</code></td><td><code>{ turn, step, message, usage? }</code></td><td>The assembled assistant message (used by derived history); carries the step's token accounting</td></tr><tr><td><code>tool/call</code></td><td><code>{ turn, step, callId, name, arguments }</code></td><td>The model requests a tool call; <code>arguments</code> is the raw JSON string produced by the model (unparsed)</td></tr><tr><td><code>tool/result</code></td><td><code>{ turn, step, message, error?, meta? }</code></td><td>The model-visible result of a completed tool call + optional internal failure identity + tool-private <code>meta</code></td></tr><tr><td><code>todo/write</code></td><td><code>{ todos }</code></td><td>Full-list snapshot; latest-write-wins</td></tr><tr><td><code>request/header</code></td><td><code>{ header, reason }</code></td><td>The complete envelope for the next request (call config + system prompt + tool schemas)</td></tr><tr><td><code>request/context</code></td><td><code>RequestContext</code></td><td>Context metadata of the route the request resolved to (logged only on route or capacity change)</td></tr><tr><td><code>session/end-seed</code></td><td><code>{}</code></td><td>Marks the end of the construction seed; earlier seqs come from the seed (resume/fork/replay)</td></tr></tbody></table>
+<p>The three message-producing <strong>surface events</strong> (<code>user/message</code>, <code>assistant/message</code>, <code>tool/result</code>) carry <code>surfaceOp</code> and <code>sourceEventSeqs</code> — they declare how they join the ordered derived surface:</p>
+<pre><code class="language-ts">/** How a session event entered the ordered surface. */
+type SurfaceOp =
+  | 'append'
+  | { op: 'replace'; start: number; end: number }</code></pre>
+<p><code>append</code> is the ordinary tail append; <code>replace</code> shadows the surface entries from <code>start</code> to <code>end</code> (inclusive) and inserts the new event in place — this is the only way compaction performs surface changes.</p>
+<h2>Derived History: What the Model Sees</h2>
+<p><code>Session.deriveMessages()</code> projects the event log into the <code>Message[]</code> the model sees. Projection rules:</p>
+<table><thead><tr><th>Event</th><th>Projection</th></tr></thead><tbody><tr><td><code>user/message</code></td><td>A user message carrying the exact <code>content</code></td></tr><tr><td><code>assistant/message</code></td><td>An assistant message including the provider and model that produced it; <strong>messages with empty content are skipped</strong> (a step truncated by max-tokens with no content still records the event to preserve usage)</td></tr><tr><td><code>tool/result</code></td><td>A user message carrying a <code>tool-result</code> block</td></tr><tr><td>Other events (<code>turn/<em></code>, <code>step/</em></code>, chunks)</td><td>Structural information, not projected as messages</td></tr></tbody></table>
+<p>The projection is <strong>cached and frozen</strong>: each surface node is projected once on first appearance, and a surface rewrite triggers a rebuild; the returned <code>Message</code> objects are shared and deeply frozen, so modifying recorded history through the projection is not expressible at the type level.</p>
+<h2>Request Header: The Log Is a Pure Function</h2>
+<p>The request envelope (<code>EpochHeader</code>) is written to the log as session state:</p>
+<pre><code class="language-ts">/** Logged request state outside derived history: call config, system prompt, and tools. */
+interface EpochHeader {
+  /** The conversation's call configuration (provider, model, reasoning effort, and sampling scalars). */
+  config: LlmCallConfig
+  /** Effective config fields materialized from the exact adapter rather than proposed by a caller. */
+  adapterDefaults?: LlmCallConfigAdapterDefaults
+  /** Rendered system prompt text; absent for a system-less request. */
+  system?: string
+  /** Assembled tool schemas; absent for a tool-less request. */
+  tools?: ToolSchema[]
+}</code></pre>
+<p>A full snapshot with reason <code>'initial'</code> or <code>'resume'</code> records the boundary of each agent loop instance; afterwards, when the request changes, another full snapshot is recorded with reason <code>'change'</code>. <strong>Every conversation request is a pure function of the log</strong> — <code>foldRequestHeader(events)</code> rebuilds the request header by selecting the latest snapshot.</p>
+<h2>Turn End Reasons</h2>
+<pre><code class="language-ts">/** Why a turn ended. Merge-extensible sum type. */
+interface TurnEndReasonMap {
+  completed: { kind: 'completed' }
+  aborted: { kind: 'aborted'; reason: TurnEndCancelCause }
+  blocked: { kind: 'blocked' }
+  error: { kind: 'error'; error: LlmFailure }
+  'max-tokens': { kind: 'max-tokens' }
+  interrupted: { kind: 'interrupted' }
+}</code></pre>
+<p><code>max-tokens</code> corresponds to the <code>FinishReason</code> of the same name in model calls: if any step within a turn ends with <code>max-tokens</code>, the whole turn ends with <code>max-tokens</code> — the truncation fact takes precedence over <code>completed</code>. <code>interrupted</code> is the only reason no loop ever emits: it is synthesized by crash recovery.</p>
+<h2>Fork: Deriving a Session</h2>
+<p><code>ctx.sessions.fork(source, boundary?, childSessionId?)</code> is the policy API for forking an active session:</p>
+<ul><li>Selects the source events up to and including the <code>boundary</code> seq (defaults to the current last event)</li><li><strong>Requires the selected prefix to end with no open turn</strong> — the API rejects a prefix ending inside an open turn rather than silently truncating</li><li>Creates an active child session containing deep-cloned seed events and child-session metadata (<code>parentSession</code>, <code>seedLength</code>, and the inherited <code>cwd</code>)</li></ul>
+<p>A forked child session appends <code>session/end-seed</code> to mark its own seed boundary — the events before it have smaller seqs, come from the seed, and belong to a lifecycle that has ended.</p>
+<h2>Execution Enclosure and Standalone Events</h2>
+<p>A turn encloses one model-loop execution, not the entire session log. Plugin-owned log-only events (such as <code>compaction/*</code>, <code>hook/invoked</code>) may appear between <code>turn/end</code> and the next <code>turn/start</code> — they consume event seqs but do not increment the turn number. Producers that need an immediate persistence barrier explicitly await <code>ctx.sessions.flush(session)</code>.</p>
+<p>The optional <code>dsh-session/invariant</code> companion plugin enforces the core-owned relationships: turn and step numbering, execution-event enclosure, and tool call/result pairing within the same step.</p>
+<h2>Model-Visible Means Logged</h2>
+<p>This is the <strong>runtime invariant</strong> of the session-log design: everything that reaches a model request must be reconstructable from the log. Therefore adding a model-visible input requires adding a session event — extend <code>SessionEventMap</code> and render from the log. If a new event is unrecognized and lacks the <code>ignorable: true</code> marker, readers <strong>must refuse</strong> to rebuild the session rather than silently drop it.</p>
+      <div class="pagenav"><a class="card prev" href="the-loop.html"><div class="label">Previous</div><div class="title">The Agentic Loop: Core of the Autonomous Loop</div></a><a class="card next" href="system-prompt.html"><div class="label">Next</div><div class="title">Dynamic System Prompt Assembly</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

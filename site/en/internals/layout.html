@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Repository Layout: A Map of Packages — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item active" href="layout.html">Repository Layout: A Map of Packages</a><a class="item" href="invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../internals/layout.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Internals / Repository Layout: A Map of Packages</div>
+      <h1>Repository Layout: A Map of the Packages</h1>
+<blockquote><p>DeepSeek Harness's monorepo layout: package groups under <code>packages/</code>, the vendored Cordis source, the docs layering, and example compositions — reading product boundaries from the repository structure.</p></blockquote>
+<h2>Top-Level Layout</h2>
+<pre><code class="language-text">vendor/      Vendored Cordis source — manifest + sync procedure in vendor/README.md
+packages/    @deepseek-ai/dsh-&lt;pkg&gt; workspaces at packages/&lt;group&gt;/&lt;pkg&gt;/
+  core/        product API spine: session, system-prompt, tools, agent, agent-loop
+  api/         Remote BFF assembly and Typert RPC gateway
+  typert/      type graph generator, loader, and runtime registry
+  llm/         LLM capability: Service Definition/Consumer + DeepSeek providers
+  e2b/         E2B POC: sandbox + FS/subprocess adapters
+  shell/       bash capability: Service Definition + local/pwsh providers + shell Consumers
+  subprocess/  subprocess capability + local process-tree provider
+  terminal/    persistent sessions
+  fs/          filesystem capability + policy
+  lsp/         language-server capability
+  skill/       skill provider registry + local impl + catalog/loader tool
+  web/         web capability: Service Definition + search/fetch providers + tool Consumer
+  compaction/  compaction capability + basic provider
+  context/     request-context plugins
+  subagent/    subagent capability: Service Definition + providers + delegation Consumers
+  bundle/      installable dsh --profile patch-layer bundles
+  workflow/    workflow capability + worker-thread provider + tool Consumer
+  todo/        todo_write tool
+  plan/        plan mode as logged state
+  preset/      per-session agent composition from preset cordis.yml files
+  guard/       loop-hygiene + tool-timeout plugins
+  self-modification/  the agent inspects/mounts its own plugins
+  hooks/       Claude Code/Codex hook bridges + wire-protocol library
+  session/     durable session data: persistence, projection, titles, telemetry
+  identity/    anonymous identity
+  settings/    user-settings capability + file provider
+  credentials/ credential-reference capability + env/.env provider
+  acp/         automation-only Agent Client Protocol server
+  interaction/ approval/interaction capabilities, permission, commands, ask-user
+  boot/        shared app-bin glue
+  sdk/         JSON-RPC protocol, server, and TypeScript client
+  examples/    demo bundles (agent-spine + CLI/ACP/JSON-RPC bins)
+  support/     dev/test infrastructure
+  util/        zero-dependency utilities
+python/      Python SDK and bundled runtime (see python/README.md)
+native/      @deepseek-ai/node-addon-landlock-run source of record (see native/README.md)
+examples/    Runnable cordis.yml leaves over packages/examples bundles
+.agents/     Agent workflows and Agent Notes
+docs/        architecture, generated catalogs, postmortems, cookbook
+scripts/     repo gates and generators
+website/     VitePress projection of selected bilingual docs/ sources</code></pre>
+<h2>Grouping Patterns</h2>
+<table><thead><tr><th>Group</th><th>Theme</th><th>Representative packages</th></tr></thead><tbody><tr><td><code>core/</code></td><td>product API spine: session, prompts, tools, agent, loop, scope</td><td><code>core/session</code>, <code>core/tools</code>, <code>core/agent-loop</code>, <code>core/scope</code></td></tr><tr><td>Capability families</td><td>three packages per seam: Definition/Provider/Consumer</td><td><code>shell/<em></code>, <code>fs/</em></code>, <code>web/<em></code>, <code>subagent/</em></code>, <code>skill/<em></code>, <code>workflow/</em></code>, <code>compaction/*</code></td></tr><tr><td><code>interaction/</code></td><td>human interaction: approval, permission, commands, ask-user</td><td><code>user-approval</code>, <code>permission-presets</code>, <code>commands</code></td></tr><tr><td><code>bundle/</code></td><td>installable profile patch layers</td><td><code>base</code>, <code>web-app</code>, <code>headless</code></td></tr><tr><td><code>sdk/</code> + <code>acp/</code> + <code>api/</code></td><td>automation access surfaces</td><td>JSON-RPC SDK, ACP server, Typert gateway</td></tr><tr><td><code>util/</code></td><td>zero-dependency utility libraries</td><td><code>brand</code> (branded-id primitives)</td></tr></tbody></table>
+<h2>Naming Conventions</h2>
+<ul><li>Every npm package is <code>@deepseek-ai/dsh-&lt;name&gt;</code>; vendored packages are rescoped and <code>private: true</code></li><li><code>@deepseek-ai/cordis</code> is a peerDependency (+ dev) of every harness package</li><li>All ESM (<code>&quot;type&quot;: &quot;module&quot;</code>); import by package name across packages, <code>.ts</code> for local relative imports</li></ul>
+<h2>Three Packages per Seam</h2>
+<p>Using shell as the canonical example: <code>packages/shell/shell</code> (Service Definition: <code>ctx.shell</code>), <code>packages/shell/bash-local</code> + <code>packages/shell/bash-sandbox</code> (Provider), <code>packages/shell/tool-bash</code> (Consumer). Roles usually live in separate packages when they need to evolve independently, but one package can hold several roles when they share a concern (<code>dsh-llm</code> is both Service Definition and Consumer).</p>
+<h2>Docs Layering</h2>
+<p>The repository's <code>docs/</code> follows a strict layering (one home per fact):</p>
+<table><thead><tr><th>Layer</th><th>Content</th></tr></thead><tbody><tr><td><code>docs/architecture.md</code></td><td>the ordered map: composition, core packages, the loop, seams, extension points</td></tr><tr><td><code>docs/subsystems/*.md</code></td><td>one page per subsystem: type definitions, semantics, generated Cordis API</td></tr><tr><td><code>docs/cookbook/*.md</code></td><td>step-by-step guides (adding-a-package, adding-a-tool, …)</td></tr><tr><td><code>docs/user/*.md</code></td><td>product-facing user guides (Web UI, providers, Python SDK)</td></tr><tr><td>generated catalogs</td><td><code>tool-catalog</code>, <code>config-catalog</code>, <code>persistence-catalog</code>, <code>module-graph</code> (generated from source, gated for freshness)</td></tr><tr><td><code>.agents/notes/</code></td><td>Agent Notes: decision records (why, what was given up, how to verify)</td></tr></tbody></table>
+<h2>Reading the Product from the Layout</h2>
+<ul><li><strong>No <code>cli/</code> main package</strong>: the CLI is a thin launcher over <code>apps/cli</code>; the real composition lives in bundles/profile — &quot;the shell is replaceable&quot;</li><li><strong>No <code>kernel/</code></strong>: <code>core/</code> is not a privileged kernel, just the set of packages &quot;every composition starts&quot; — &quot;everything is a plugin&quot;</li><li><strong>Capability-family triad</strong>: every seam has a Definition/Provider/Consumer — &quot;capabilities are complete&quot;</li><li><strong>Generated catalogs are gated</strong>: the tool/config/persistence catalogs are generated from source by scripts and validated by a freshness gate — docs–code sync is a mechanical guarantee, not a habit</li></ul>
+      <div class="pagenav"><a class="card prev" href="../features/jobs.html"><div class="label">Previous</div><div class="title">Background Jobs: Managing Long-Running Work</div></a><a class="card next" href="invariants.html"><div class="label">Next</div><div class="title">Runtime Invariants: The Architecture Proving Itself</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Dynamic System Prompt Assembly — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item active" href="system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../core/system-prompt.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Core Mechanics / Dynamic System Prompt Assembly</div>
+      <p>﻿# System Prompt Dynamic Assembly</p>
+<blockquote><p>An in-depth analysis of DeepSeek Harness's System Prompt assembly mechanism (<code>packages/core/system-prompt</code>): prompt sections concatenated by order, dynamic context materialized on demand, tool schema allowlist projection — how scattered plugin contributions are assembled into a cache-friendly request prefix.</p></blockquote>
+<h2>One Core Design: A Registry, Not a Template</h2>
+<p>The System Prompt is not a hardcoded template but a <strong>registry</strong>: any plugin can register prompt sections (<code>PromptSection</code>) and dynamic context (<code>PromptContext</code>), which are sorted and concatenated by <code>order</code> at assembly. This turns &quot;add a prompt section&quot; into one registration call instead of editing a template file.</p>
+<pre><code class="language-text">Plugin A registers section(&quot;harness:identity&quot;, order=-100)
+Plugin B registers section(&quot;deployment:persona&quot;, order=0)
+Plugin C registers section(&quot;tool:guidance&quot;, order=150)
+Plugin D registers context(&quot;workspace:notice&quot;, order=10)
+         │
+         ▼ assembly (per step)
+   sections concatenated in ascending order
+   + ctx.tools.schemas(scope) tool schema allowlist
+         │
+         ▼
+   request/header event written to the log (EpochHeader.system + .tools)</code></pre>
+<h2><code>PromptSection</code>: A Prompt Section</h2>
+<pre><code class="language-ts">/** One contributed section of the system prompt (registry input). */
+interface PromptSection {
+  /** Unique name — a duplicate registration throws. */
+  readonly name: string
+  /**
+   * Sections are concatenated in ascending order. Convention: `-100` is the
+   * harness identity, `0` the deployment persona, tool guidance uses 100–199;
+   * other negative orders also render before the persona.
+   */
+  readonly order: number
+  /** Static text or a provider evaluated at each assembly with that assembly's context. */
+  readonly text: string | ((context: AssembleContext) =&gt; string)
+  /** Treat this contribution as the complete system prompt. */
+  readonly complete?: boolean
+}</code></pre>
+<p>Key semantics:</p>
+<ul><li><strong><code>order</code> convention</strong>: <code>-100</code> is the harness identity, <code>0</code> the deployment persona, tool guidance uses 100–199; negative orders also render before the persona. Once collaborative assembly completes, a valid <code>complete</code> section becomes the sole prompt section</li><li><strong><code>text</code> can be a function</strong>: evaluated at each assembly with that assembly's <code>AssembleContext</code>; text may reference <code>{{variable}}</code>, interpolated later by <code>renderPrompt</code></li><li><strong>Duplicate registration throws</strong>: a section of the same name can appear only once in an assembly</li></ul>
+<h2><code>PromptContext</code>: Dynamic Context</h2>
+<p><code>PromptContext</code> is the cache-safe counterpart to sections — dynamic model context is materialized as <strong>persistent user-role snapshots</strong>:</p>
+<ul><li>The agent loop only logs one after the retained model history when the full current snapshot changes or is removed by compaction</li><li>Text can be a function; empty text contributes nothing</li><li>Each context entry has its own <code>source</code> and metadata (such as <code>{ kind: 'plugin', plugin: '…' }</code> + <code>form</code>)</li></ul>
+<p>The <code>form</code> vocabulary for message sources is semantic, never visual: <code>instructions</code> (directives from workspace files), <code>catalog</code> (a directory of available items), <code>snapshot</code> (current state; a later snapshot supersedes the earlier one), <code>notice</code> (what just happened, one-shot), <code>relay</code> (a message sent by another agent), <code>recall</code> (material pulled from another session log).</p>
+<h2>Tool Schemas: Allowlist Projection</h2>
+<p><code>ctx.tools.schemas(scope)</code> projects the tool definitions visible in the current scope into <strong>model-facing <code>ToolSchema[]</code></strong>: only <code>name</code>, <code>description</code>, and <code>parameters</code> — execution and presentation callbacks such as <code>output</code>, <code>execute</code>, <code>finalizeContent</code>, <code>timeoutMs</code>, <code>isConcurrencySafe</code>, <code>presentCall</code>, and <code>presentResult</code> <strong>never leak into the model request</strong>.</p>
+<p>Scope resolution gives each agent a different tool list: the global layer plus every ancestor on that agent's scope chain; scoped tools shadow the global ones of the same name, and restrictions filter the global tool set (see <a href="scope.html">Agent Scope</a>).</p>
+<h2>Assembly Context</h2>
+<pre><code class="language-ts">/** Merge-extensible context for one prompt assembly. */
+interface AssembleContext {
+  /** Scope whose providers and waterfall listeners participate. */
+  scope?: ScopeKey
+  /** Explicit control signal for the turn that requested this assembly, when any. */
+  signal?: AbortSignal
+}</code></pre>
+<p><code>AssembleContext</code> identifies the scope layer an assembly resolves against. <code>dsh-agent</code> adds the optional <code>agent</code> field; <code>assembleContextFor(agent, signal)</code> sets the explicit fields together. A bare assembly has neither a scope nor a signal.</p>
+<h2>Cache-Friendly</h2>
+<p>The system prompt is the most expensive and most repetitive part of a request. Two mechanisms keep it cache-friendly:</p>
+<ol><li><strong>Incremental logging</strong>: <code>request/header</code> records a new snapshot only when the request changes; dynamic context is appended only when the snapshot changes or compaction removes it — never rewritten every step</li><li><strong>Pure-function rebuild</strong>: the request header is a pure function of the log, rebuilt from the latest snapshot after replay/resume/compaction, with no live mirror</li></ol>
+<h2>In Practice: Registering a Prompt Section</h2>
+<pre><code class="language-ts">import { Context } from '@deepseek-ai/cordis'
+
+export function apply(ctx: Context) {
+  ctx.systemPrompt.section({
+    name: 'my-plugin:guidance',
+    order: 120,                       // tool-guidance range
+    text: 'When the user asks about X, prefer approach Y.',
+  })
+  // the disposer is managed automatically by the effect: the section is revoked when the plugin unloads
+}</code></pre>
+<p>This is the everyday shape of &quot;everything is a plugin&quot; — instead of adding text to a template, you register a section; it takes effect on reload and is undone on unload.</p>
+      <div class="pagenav"><a class="card prev" href="session.html"><div class="label">Previous</div><div class="title">The Session Log: The Event-Sourced Source of Truth</div></a><a class="card next" href="scope.html"><div class="label">Next</div><div class="title">Agent Scope: Visibility Is Lifecycle</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

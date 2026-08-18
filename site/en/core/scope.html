@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Agent Scope: Visibility Is Lifecycle — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="system-prompt.html">Dynamic System Prompt Assembly</a><a class="item active" href="scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../core/scope.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Core Mechanics / Agent Scope: Visibility Is Lifecycle</div>
+      <p>﻿# Agent Scope: Visibility Is Lifecycle</p>
+<blockquote><p>A contribution (tool, prompt section, variable, restriction, listener) is either <em>global</em> or belongs to exactly one scope key. Scoped registration determines both visibility and binds the lifecycle — one fact decides both.</p></blockquote>
+<h2>Why Scope Is Needed</h2>
+<p>A harness process usually holds multiple agents: the main agent, delegated subagents, and resumable background agents. They share the same <code>ctx</code> world but <strong>should not see the same things</strong>:</p>
+<ul><li>A subagent should not see its parent's private tools</li><li>One agent's persona must not pollute another's</li><li>When an agent's lifecycle ends, its registrations must unwind with it</li></ul>
+<p>DeepSeek Harness solves this with a two-layer flat structure: the <code>scope/</code> library provides the vocabulary of identity, carrier, and scope layers, so the same registration context expresses both each agent's visibility and shared lifecycle ownership.</p>
+<h2>Core Primitives</h2>
+<pre><code class="language-ts">/** An opaque, identity-compared scope key. */
+type ScopeKey = object</code></pre>
+<p><code>ScopeKey</code> is an opaque object-identity marker — the shipped agent loop uses the active <code>Agent</code> object as its own key, but the primitive never inspects that object.</p>
+<p><strong>Only two layers, flat by design</strong>: scoped registrations do not inherit down to subagents; subtree behavior is expressed through lineage (<code>parentSession</code>, <code>delegationDepth</code>, <code>subagentDepth</code>) data, never through scope structure.</p>
+<pre><code class="language-ts">/** A minted registration scope and its quiescent disposal boundaries. */
+interface Scope {
+  /** Context through which scope-owned registrations are made. */
+  ctx: Context
+  /** Exact Cordis disposer, used when nesting this scope in an ordered composite effect. */
+  rawDispose: () =&gt; Promise&lt;void&gt; | void
+  /** Dispose every scope-owned registration; racing calls await the same completion. */
+  dispose(): Promise&lt;void&gt;
+}</code></pre>
+<h2>Scoped Dispatch: Routing Events by Subject</h2>
+<p><code>Scoped&lt;T&gt;</code> is a compile-time brand marker placed on the opaque routing receiver returned by <code>scopeTarget(base, key)</code>:</p>
+<pre><code class="language-ts">/** A routing-only event receiver built by scopeTarget. */
+type Scoped&lt;T extends object&gt; = object &amp; { readonly [ScopedBrand]: T }</code></pre>
+<p>Scope-filtered event declarations use this carrier as their <code>this</code> type, while the actual event subject is still passed as an explicit argument. <strong>Dispatch rules</strong>:</p>
+<ul><li>Events about an agent's activity dispatch with that agent's carrier — agent-scoped listeners only receive that agent's events</li><li>Events about the registry itself (such as &quot;a tool was added&quot;) are registry-subject events and stay unfiltered</li></ul>
+<p>For example, <code>agent/pre-step</code> is declared as <code>'agent/pre-step'(this: Scoped&lt;Agent&gt;, payload: {...}, next)</code> — only listeners within that agent's scope participate in its pre-step decision.</p>
+<h2>Shadowing: The Most Specific Wins</h2>
+<p>Scoped tools, sections, and variables <strong>replace the global ones of the same name</strong> only within that scope:</p>
+<pre><code class="language-text">global tool register(&quot;bash&quot;, …)
+agent A scope: register(&quot;bash&quot;, …)   ← A sees its own bash
+agent B scope: (none registered) ← B sees the global bash</code></pre>
+<p>This is the mechanism for tailoring persona and tool variants per agent. When the tool registry reads, it merges the global layer with the observing scope's chain: entries from the nearest layer win name collisions outright.</p>
+<h2>Restrictions and Scope-Local Registrations</h2>
+<pre><code class="language-ts">/** Per-scope filter over global tools. Restrictions intersect and do not affect scoped registrations. */
+interface ToolRestriction {
+  /** Global tool names that stay visible; everything else is removed. */
+  readonly allow?: readonly string[]
+  /** Global tool names removed from visibility. */
+  readonly deny?: readonly string[]
+}</code></pre>
+<p><code>tools.restrict(filter)</code> filters the <strong>global</strong> tool set for a single scope (multiple restrictions combine by intersection); scope-local registrations merge in after the filter. Filtered-out global tools <strong>appear neither in the prompt nor execute</strong> — indistinguishable from tools that do not exist (&quot;visibility, not permission&quot;). A deny-only filter lets subsequently unlisted inherited tools through, while an allow list excludes them — so a delegated subagent keeps the tools its reporting depends on.</p>
+<h2>Agent Context: <code>agent.ctx</code></h2>
+<p>An agent's scoped context. Registrations made through it have scope visibility and their lifecycle binds to that scope as well (one fact decides both). The <code>Agent</code> handle exposes:</p>
+<pre><code class="language-ts">/** Agent-scoped context; its contributions are agent-local, unwind on disposal, and reject registration afterward. */
+readonly ctx: Context</code></pre>
+<h2>Setup Window: Assembling the Scoped World</h2>
+<p>The creator's time slot for assembling an agent's scoped environment (<code>CreateAgentOptions.setup</code>):</p>
+<ul><li>At this point the scope and agent objects already exist, but neither the agent nor the session has been published</li><li><code>agent/session-start</code> has not fired, and the first prompt has not been assembled</li><li><strong>setup only registers; it never drives the agent</strong> — a setup rejection, a commit throw, or the owner's dispose all roll back the transaction, and neither id is published</li></ul>
+<p>A subagent's creation window is exactly where the parent preset composition is bound via <code>composeFrom(agentCtx, parentCtx)</code> (see <a href="../agent/preset.html">Agent Preset</a>).</p>
+<h2>Lineage: Data, Not Structure</h2>
+<p>Parent–child relationships are carried as data: <code>parentSession</code> (persistent), <code>delegationDepth</code> (a persistent subagent recursion budget), <code>subagentDepth</code> (runtime). <strong>Lineage never affects visibility</strong> — it serves authorization (for example, a subagent's later operations require a persisted direct parent), budgeting, and auditing, not scope resolution.</p>
+<h2>Terminology Cheat Sheet</h2>
+<table><thead><tr><th>Term</th><th>Meaning</th></tr></thead><tbody><tr><td>scope</td><td>The registration unit divided per agent; only global and scope-local layers exist</td></tr><tr><td>scope key</td><td>An opaque identifier compared by object identity; the active agent is the key of its own scope</td></tr><tr><td>scope carrier</td><td>The <code>thisArg</code> carried by scope-filtered dispatch</td></tr><tr><td>shadowing</td><td>Name resolution where the most specific wins</td></tr><tr><td>restriction</td><td>Filters the global tool set for a single scope</td></tr><tr><td>setup window</td><td>The creator's time slot for assembling an agent's scoped environment</td></tr><tr><td>lineage</td><td>Parent–child relationship facts carried as data</td></tr></tbody></table>
+      <div class="pagenav"><a class="card prev" href="system-prompt.html"><div class="label">Previous</div><div class="title">Dynamic System Prompt Assembly</div></a><a class="card next" href="../tools/what-are-tools.html"><div class="label">Next</div><div class="title">Tool System Design: The AI's Hands</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

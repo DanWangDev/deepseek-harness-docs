@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Identity and Telemetry: Anonymity and Auditing — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="layout.html">Repository Layout: A Map of Packages</a><a class="item" href="invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item active" href="telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../internals/telemetry-identity.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Internals / Identity and Telemetry: Anonymity and Auditing</div>
+      <h1>Identity and Telemetry: Anonymous and Auditable</h1>
+<blockquote><p>DeepSeek Harness's anonymous-identity and telemetry mechanisms: a random UUID per harness home, the ledger/ops two-channel telemetry, the shared sharing status — and the complete answer to &quot;which data leaves your machine.&quot;</p></blockquote>
+<h2>Anonymous Identity</h2>
+<p><code>@deepseek-ai/dsh-anonymous-user-id</code> (<code>packages/identity/anonymous-user-id</code>) is a <strong>shared library, not a Cordis plugin</strong>:</p>
+<pre><code class="language-ts">getOrCreateAnonymousUserId()  // returns a random UUID v4, one per harness home</code></pre>
+<ul><li>Persisted as the single line <code>$DSH_HOME/.anonymous-user-id</code> (default <code>~/.dsh/</code>)</li><li><strong>Never derived from hostname, network, or git</strong> — it is simply a random UUID</li><li>Deleting the file resets it; different homes cannot be linked</li><li>The first write uses exclusive creation; concurrent losers adopt the persisted value</li></ul>
+<p>Its consumers:</p>
+<table><thead><tr><th>Consumer</th><th>Use</th></tr></thead><tbody><tr><td>OTel telemetry backend</td><td>reported as the Resource <code>user.id</code></td></tr><tr><td><code>/feedback</code> acknowledgment</td><td>the acknowledgment text carries the same value</td></tr><tr><td><code>dsh-llm-deepseek</code></td><td>sends the <code>x-deepseek-harness-user-id</code> header</td></tr></tbody></table>
+<h2>The Telemetry Seam</h2>
+<p>Telemetry is an <strong>optional capability</strong>: a Service Definition + capture coordinator <code>ctx.sessionTelemetry</code> (<code>packages/session/session-telemetry</code>); the deployment loads the Provider <code>dsh-session-telemetry-otel</code> (an as-configured OpenTelemetry JS SDK logging pipeline). The harness's responsibility ends at <code>emit()</code> — batching, retry, and queuing belong to the reporting SDK.</p>
+<p><strong>The content never enters a model request</strong> — telemetry only observes; it does not join the conversation.</p>
+<h3>Record Shape</h3>
+<pre><code class="language-ts">SessionTelemetryRecord {
+  channel: 'ledger' | 'ops'
+  time: number
+  severity: 'info' | 'warn' | 'error'
+  attributes: Record&lt;string, unknown&gt;
+  body?: unknown
+}</code></pre>
+<table><thead><tr><th>Channel</th><th>Content</th></tr></thead><tbody><tr><td><code>ledger</code></td><td>a <strong>one-to-one mirror</strong> of session-log events: attributes carry only <code>session.id</code>/<code>event.type</code>/<code>event.seq</code> (plus <code>session.cwd</code>/<code>parent_id</code>/<code>seed_length</code> where the header has them)</td></tr><tr><td><code>ops</code></td><td>operational events: <code>agent-error</code>, <code>shutdown</code> (deliberately without <code>event.seq</code>, so they are not mistaken for ledger rows)</td></tr></tbody></table>
+<p>Detail discipline:</p>
+<ul><li>Per <code>(turn, step)</code>, only the first <code>assistant/chunk</code> is emitted (the stream-started signal); the remaining chunks are dropped — <code>seq</code> gaps in transit are the norm</li><li>ledger deduplicates by <code>(session.id, event.seq)</code>; ops tolerates duplicates</li><li>Delivery is best-effort; the desensitization waterfall is <code>session-telemetry/record</code></li></ul>
+<h3>Shared Sharing Status</h3>
+<pre><code class="language-ts">type SessionTelemetrySharingStatus = 'full' | 'feedback-only' | 'disabled'</code></pre>
+<p>Disclosed through the required member <code>ctx.sessionTelemetry.sharing</code>:</p>
+<table><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody><tr><td><code>full</code></td><td>telemetry export is on</td></tr><tr><td><code>feedback-only</code></td><td>only feedback direct acknowledgments (not through the telemetry pipeline)</td></tr><tr><td><code>disabled</code></td><td>fully off</td></tr></tbody></table>
+<p><code>DSH_TELEMETRY_DISABLED</code> only stops telemetry export — it does <strong>not</strong> affect feedback direct acknowledgments or the DeepSeek provider header (that <code>x-deepseek-harness-user-id</code> is identity, not telemetry).</p>
+<h2>Feedback</h2>
+<p><code>@deepseek-ai/dsh-message-feedback</code> is editable feedback on a single assistant message — a <strong>local storage-domain sidecar</strong>, deliberately separated from the immutable Session-level <code>feedback/record</code> event (not log content/projection, no telemetry handoff):</p>
+<pre><code class="language-ts">type MessageFeedbackRating = 'positive' | 'negative'
+MessageFeedbackItem { messageId, rating, note?, version, createdAt, updatedAt }</code></pre>
+<p><code>version</code> is a CAS token — concurrent edits are rejected as version conflicts.</p>
+<h2>The Audit Panorama</h2>
+<p>Identity and telemetry answer two questions: <strong>&quot;who are you&quot;</strong> (an anonymous UUID that cannot be reverse-linked) and <strong>&quot;what happened&quot;</strong> (ledger mirror + session log). Combined with the session log's audit event pairs (<code>approval/asked</code> + <code>approval/decided</code>, <code>hook/invoked</code> + <code>hook/result</code>), the system presents to an external observer:</p>
+<pre><code class="language-text">Replayable session log (model-visible means logged)
+  + anonymous identity (cannot be linked to a real user)
+  + disableable telemetry (default state is disclosed)
+  + local feedback sidecar (not reported)</code></pre>
+<p>That is the full meaning of &quot;auditable from source&quot; — in contrast to agent products with built-in telemetry that cannot be turned off.</p>
+      <div class="pagenav"><a class="card prev" href="invariants.html"><div class="label">Previous</div><div class="title">Runtime Invariants: The Architecture Proving Itself</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

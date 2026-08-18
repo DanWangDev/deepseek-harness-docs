@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Web UI: The Console in Your Browser — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item active" href="web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="commands.html">Human Commands: The Slash Plane</a><a class="item" href="jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../features/web-ui.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Features &amp; Usage / Web UI: The Console in Your Browser</div>
+      <h1>Web UI: The Console in Your Browser</h1>
+<blockquote><p>DeepSeek Harness's default interaction surface: the browser application started by <code>dsh web</code>. From model configuration and workspace selection to session input and approval dialogs — the full presentation of agent capability in the browser.</p></blockquote>
+<h2>Starting It</h2>
+<pre><code class="language-sh">npx @deepseek-ai/dsh web</code></pre>
+<p>Default address <code>http://127.0.0.1:3080</code>. The <code>dsh</code> process treats <strong>the directory it was started in</strong> as the default filesystem location; a fresh Web UI has no workspace selected, so you need to add one.</p>
+<h2>Three Steps to Get Started</h2>
+<h3>1. Configure a Model</h3>
+<p>Open <strong>Settings → Models</strong>, enter a <a href="https://platform.deepseek.com/">DeepSeek API key</a>, and save. The model route becomes available immediately — <strong>no server restart needed</strong>.</p>
+<p>Keys are write-only: after saving, the page only receives a desensitized descriptor, the plaintext key is stored in <code>$DSH_HOME/.credentials.yaml</code>, and settings keep only its credential reference.</p>
+<h3>2. Select a Workspace</h3>
+<p>Click <strong>Select Workspace</strong>, add the project directory where <code>dsh</code> was started, then select it. The session input box is unavailable until a workspace is selected.</p>
+<h3>3. Run a Task</h3>
+<p>Start a session and send:</p>
+<blockquote><p>Summarize this repository and identify its main packages.</p></blockquote>
+<p>The agent can read and edit workspace files, run commands, delegate work, and maintain plans. If an operation needs approval under the current permission policy, the Web UI asks you first.</p>
+<h2>What's Behind the Interface</h2>
+<p>The Web UI is not &quot;another product&quot; — it is a composition layer on the same plugin tree:</p>
+<pre><code class="language-text">dsh-base (base capabilities)
+  └─ dsh-web-app (browser surface bundle)
+       ├─ coding persona (prompt section)
+       ├─ Web host row: webserver, API gateway, workspace, projection cache, storage
+       ├─ client plugin roster (client plugins run in the browser)
+       └─ dsh-client-hmr (dev-time hot reload)</code></pre>
+<ul><li>The browser calls host services through the <strong>Typert RPC gateway</strong> (<code>ctx.remote</code>) — complex objects such as <code>Agent</code> map to wire identities</li><li>UI rendering is driven by <code>session/event</code> and <code>session.status</code>: the session event stream → message list, tool cards, todo checklist</li><li>Tool cards come from the render intents of <code>presentCall</code>/<code>presentResult</code> (<code>generic</code>/<code>terminal</code>/<code>diff</code>/<code>search</code>/<code>read</code>/<code>web</code>) — the tool describes itself, and the UI projects it into a view</li></ul>
+<h2>Approval Dialogs</h2>
+<p>When an operation needs approval, the Web UI presents the confirmation as one link in the answerer chain:</p>
+<ul><li><code>tools/pre-execute</code> returns <code>ask</code> → <code>ctx.approval.request</code> → UI dialog</li><li><code>allowed-once</code> authorizes only this one operation; rejection/cancellation/unavailability all count as denial</li><li>Approval-state changes append a runtime-context snapshot after the preserved history — the model knows what permission environment it is in (see <a href="../safety/permission-model.html">approval model</a>)</li></ul>
+<h2>Server Notes</h2>
+<p><code>dsh-host-webserver</code> is the <code>node:http</code> carrier for the browser GUI: named routes (<code>exact</code>/<code>prefix</code>) + a single-owner fallback slot + <code>tapIndex</code> translation. Config <code>{ host: '127.0.0.1' | '0.0.0.0', port }</code> — <strong>no TLS/auth/origin policy</strong>; binding <code>0.0.0.0</code> exposes the network; the <code>web-startup</code> provider <strong>rejects <code>--host 0.0.0.0</code></strong> (an unsupported use case). <code>EADDRINUSE</code> fails startup.</p>
+<h2>Next Steps</h2>
+<ul><li><a href="providers.html">Configure model providers</a>: catalog providers, custom OpenAI-compatible endpoints, image input</li><li><a href="../extensibility/sdk.html">Use the Python SDK</a>: programmatic access to the same capabilities</li><li><a href="../extensibility/plugins.html">Develop plugins</a>: add your own tools and settings cards to the Web UI</li></ul>
+      <div class="pagenav"><a class="card prev" href="../safety/plan-mode.html"><div class="label">Previous</div><div class="title">Plan Mode: Look Before You Act</div></a><a class="card next" href="providers.html"><div class="label">Next</div><div class="title">Model Providers: Multi-Endpoint Routing</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

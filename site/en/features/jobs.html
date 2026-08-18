@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Background Jobs: Managing Long-Running Work — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="commands.html">Human Commands: The Slash Plane</a><a class="item active" href="jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../features/jobs.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Features &amp; Usage / Background Jobs: Managing Long-Running Work</div>
+      <h1>Background Jobs: Long-Running Management</h1>
+<blockquote><p>The shared vocabulary of long-running producers, the <code>ctx.jobs</code> runtime, and the job-control tools: how bash background commands, PTY sends, and subagents are read, listed, and killed through the same set of <code>job_*</code> tools.</p></blockquote>
+<h2>Why Background Jobs</h2>
+<p>Agents often need to start work that &quot;runs for a long time&quot;: <code>pnpm run test</code> (minutes), long builds, background polling. If every tool call blocked waiting for completion, the agent would get stuck — and once the model output is truncated or the turn ends, foreground work can be taken down with it.</p>
+<p>The background-job runtime (<code>ctx.jobs</code>) <strong>decouples</strong> &quot;long-running work&quot; from the tool call:</p>
+<pre><code class="language-text">bash(&quot;pnpm run test&quot;, run_in_background: true)
+  → ctx.jobs.start({ kind: 'bash', label: 'pnpm run test', owner: agent })
+  → returns a JobId immediately (bash-N)
+  → the model can continue with other work
+  → job_output reads output / job_list lists / job_kill kills
+  → completion notification delivered via agent.inject() as user/message</code></pre>
+<h2>Producer Contract</h2>
+<pre><code class="language-ts">/** Producer declaration passed to JobRegistry.start. */
+interface JobStart {
+  kind: JobKind              // also the id prefix (bash, subagent, …)
+  label: string              // one-line model-visible label
+  outputLimitBytes?: number  // UTF-8 byte cap per complete completion notification/output read
+  owner?: Agent              // owning agent; its dispose cancels and waits on the job
+  run(): JobHooks            // called after preflight; a throw registers nothing
+}</code></pre>
+<pre><code class="language-ts">/** Hooks through which the runtime controls and observes producer work. */
+interface JobHooks {
+  cancel(reason?: string): void        // synchronous, idempotent, settles as done
+  done: Promise&lt;JobOutcome&gt;            // resolves after the producer releases resources (not when work finishes)
+  readOutput?(): string                // consumes output since the last call
+}</code></pre>
+<p>Access control rests on <strong>owner authorization</strong> (<code>ownerSession</code> carries the shared <code>SessionId</code>), not on the secrecy of the id.</p>
+<h2>State and Snapshots</h2>
+<pre><code class="language-ts">type JobStatus = 'running' | 'stopping' | 'completed' | 'killed' | 'failed'</code></pre>
+<p><code>JobSnapshot</code> is a <strong>read-only projection</strong> built fresh each time (a new object, never live registry state). <code>JobOutcome.status</code> is the producer-reported three-state terminal outcome: <code>completed</code> (finished), <code>killed</code> (cancelled), <code>failed</code> (failed), with a kind-specific <code>detail</code> (such as <code>'exit code: 3'</code>, <code>'max-tokens'</code>).</p>
+<h2>The Three Tools</h2>
+<table><thead><tr><th>Tool</th><th>Behavior</th></tr></thead><tbody><tr><td><code>job_list</code></td><td>lists jobs (kind, label, status snapshot)</td></tr><tr><td><code>job_output</code></td><td>reads output since the last read (streaming jobs); blocks while waiting on a job</td></tr><tr><td><code>job_kill</code></td><td>requests cancellation (synchronous, idempotent, settles eventually)</td></tr></tbody></table>
+<p><code>dsh-tool-jobs</code> is agnostic to job kind: <strong>bash background commands, PTY sends, and subagents are all read, listed, and killed through the same 3 tools</strong>. Loading the plugin hooks up the controllers, enabling producers' <code>ctx.jobs.start()</code>.</p>
+<h2>Completion Notifications</h2>
+<p>A completion listener renders the <code>JobOutcome</code> as a model-visible completion notification (injected via <code>agent.inject()</code> as a user/message):</p>
+<ul><li><code>outputLimitBytes</code> is the byte cap per complete notification — a status line like <code>'exit code: 3'</code> does not eat the output budget</li><li>The <code>reported</code> field suppresses the completion notification: when another interface has already delivered or promised to deliver the terminal state (such as the automatic delivery of a subagent result), it is not notified again</li><li>Draining teardown cancellations of the owner or the service count as well</li></ul>
+<h2>Coordination with the Tool Family</h2>
+<table><thead><tr><th>Producer</th><th>Via</th><th>Backgrounding</th></tr></thead><tbody><tr><td>bash/pwsh tools</td><td><code>run_in_background: true</code> argument</td><td>register with <code>ctx.jobs</code>; <code>enableRunInBackground</code> can remove the argument</td></tr><tr><td>terminal_send</td><td><code>run_in_background: true</code></td><td>registers with <code>ctx.jobs</code></td></tr><tr><td>subagent</td><td>background mode (<code>continuable</code> default)</td><td>activation managed via <code>ctx.subagents</code>, results delivered automatically via the <code>subagent</code> tool</td></tr></tbody></table>
+<h2>Example Flow</h2>
+<pre><code class="language-text">Model: bash(&quot;pnpm run test&quot;, run_in_background: true)
+  → tool/result: { jobId: &quot;bash-3&quot; }
+Model: todo_write([...])   ← keeps doing other work
+  ← user/message: &quot;Background job bash-3 completed: exit code 0&quot;
+Model: job_output({ job_id: &quot;bash-3&quot; })  → full output</code></pre>
+      <div class="pagenav"><a class="card prev" href="commands.html"><div class="label">Previous</div><div class="title">Human Commands: The Slash Plane</div></a><a class="card next" href="../internals/layout.html"><div class="label">Next</div><div class="title">Repository Layout: A Map of Packages</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

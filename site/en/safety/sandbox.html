@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>The Sandbox: Process Isolation — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="permission-model.html">The Approval Model: ask/never Decisions</a><a class="item active" href="sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../safety/sandbox.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Safety / The Sandbox: Process Isolation</div>
+      <h1>The Sandbox: Process Isolation</h1>
+<blockquote><p>A systematic walkthrough of DeepSeek Harness's process sandbox: the three <code>SandboxMode</code> file-effect policies, the four local backends bwrap/Landlock/Seatbelt/Windows-ACL, <code>full</code>/<code>partial</code> enforcement completeness, and how consumers distinguish &quot;denied by the sandbox&quot; from &quot;the sandbox itself failed.&quot;</p></blockquote>
+<h2>What the Sandbox Is</h2>
+<p>The sandbox (<code>ctx.sandbox</code>) wraps <strong>child-process argv that shares the host's filesystem and kernel</strong> in a file-effect policy without coupling consumers to a platform-specific runner:</p>
+<ul><li>This is a second defense <strong>outside</strong> the permission system — even when approval grants passage, the process still runs under the sandbox policy</li><li>Network and process visibility are <strong>not</strong> within the scope of <code>SandboxMode</code></li><li>Containers, microVMs, and remote execution are sibling implementations of the full capability seam, not providers of <code>ctx.sandbox</code></li></ul>
+<h2>Capability Breakdown</h2>
+<table><thead><tr><th>Role</th><th>Package</th></tr></thead><tbody><tr><td>Service Definition</td><td><code>dsh-sandbox</code> (<code>ctx.sandbox</code> + vocabulary)</td></tr><tr><td>Service Provider</td><td><code>dsh-sandbox-local</code>: Linux bwrap/Landlock, macOS Seatbelt, Windows ACL restricted-token backends</td></tr><tr><td>Consumer</td><td><code>dsh-bash-sandbox</code>, <code>dsh-pwsh-sandbox</code> (and any consumer that needs to confine subprocesses)</td></tr></tbody></table>
+<h2>The Three Modes</h2>
+<pre><code class="language-ts">/** File-effect policy for confined processes. */
+type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'</code></pre>
+<table><thead><tr><th>Mode</th><th>Allows</th><th>Notes</th></tr></thead><tbody><tr><td><code>read-only</code></td><td>only required sinks (such as <code>/dev/null</code>)</td><td>denies writes; the POSIX runner grants the <code>/dev/null</code> the shell needs, while the Windows ACL runner grants no explicit writable root</td></tr><tr><td><code>workspace-write</code></td><td>workspace root + backend-defined temporary areas</td><td>the normal agent working mode</td></tr><tr><td><code>danger-full-access</code></td><td>everything</td><td><strong>bypasses isolation</strong>; the consumer spawns the raw argv directly, without calling <code>ctx.sandbox</code></td></tr></tbody></table>
+<p>Only the first two modes can be sent to a provider; <code>SandboxPolicy</code> carries confined modes only.</p>
+<h2>Enforcement Completeness: full vs partial</h2>
+<pre><code class="language-ts">/** Enforcement completeness for this host. `partial` means an active backend or older kernel ABI cannot govern every promised file effect. */
+type SandboxEnforcement = 'full' | 'partial'</code></pre>
+<p>Enforcement completeness is a <strong>fact reported by the backend</strong>:</p>
+<ul><li><code>full</code>: the backend governs every file effect the mode promises</li><li><code>partial</code>: the active backend or an older kernel ABI governs only a subset — <strong>consumers that require absolute guarantees must reject or surface this distinction upward</strong></li></ul>
+<p>Current partial-enforcement cases include older Landlock ABIs and the Everyone and hard-link boundaries of the Windows ACL runner.</p>
+<h2>Per-Call Policy</h2>
+<p>The complete enforcement policy is <strong>resolved and carried per capability call</strong> — it is not fixed on the provider:</p>
+<pre><code class="language-ts">/** The complete file-effect policy resolved for one capability call. */
+interface SandboxExecutionPolicy {
+  mode: SandboxMode
+  /** Absolute root directory workspace-write may write under. */
+  workspaceRoot: string
+  sessionId?: SessionId
+}</code></pre>
+<ul><li>A normal tool call derives <code>workspaceRoot</code> from the calling session's immutable cwd; the deployment configuration is the fallback when there is no agent</li><li>The root is normalized by filesystem semantics first, then lexically — a cwd containing <code>symlink/..</code> identifies the directory the spawned process actually runs in</li><li>Two consumers can be confined under different policies at the same time (bash under <code>read-only</code> while a confined subagent needs its state directory writable)</li><li>An approved retry of a prompt is a <strong>new call</strong> carrying the wider policy</li></ul>
+<h2>argv Wrapping and Classification Dialects</h2>
+<p><code>SandboxProvider.confine</code> returns what the consumer actually spawns:</p>
+<pre><code class="language-ts">/** A confine result: the argv to spawn in place of the caller's own, plus enforcement completeness. */
+interface ConfinedArgv {
+  argv: string[]                        // runner + profile + separator + caller argv
+  enforcement: SandboxEnforcement
+  denialSignatures: readonly string[]   // backend denial dialect (EROFS / EACCES / EPERM)
+  runnerFailureRules: readonly RunnerFailureRule[]
+}</code></pre>
+<p><strong>Two orthogonal stderr classifiers</strong>:</p>
+<table><thead><tr><th>Classifier</th><th>Meaning</th><th>Consumer behavior</th></tr></thead><tbody><tr><td><code>denialSignatures</code></td><td>signs that a confined command was blocked while the sandbox is <strong>working normally</strong></td><td>concludes &quot;the sandbox denied this command&quot;</td></tr><tr><td><code>runnerFailureRules</code></td><td>the sandbox runner <strong>refused or failed before executing the command</strong></td><td>concludes &quot;sandbox infrastructure failure&quot;, reported as an infrastructure problem rather than an ordinary task failure</td></tr></tbody></table>
+<p>A <code>RunnerFailureRule</code> requires: the process exits non-zero (an optional exit-code gate is allowed) plus a fatal signature in some remaining stderr line; informative exclusions are removed by whole-line exact matching first — <strong>the exit status alone can never prove a runner failure</strong>.</p>
+<h2>Consumer Flow (bash-sandbox as Example)</h2>
+<pre><code class="language-text">bash(&quot;rm -rf /etc&quot;)
+  → resolve the sandbox policy (session cwd → workspaceRoot, mode)
+  → ctx.sandbox.confine(argv, policy)
+  → spawn the wrapped argv (bwrap/Landlock/Seatbelt/Windows-ACL)
+  → did the command fail?
+      first check runnerFailureRules → sandbox failure, report an infrastructure error
+      then check denialSignatures → sandbox denial, report &quot;confined command blocked&quot;
+      neither matches → ordinary command failure (exit code)</code></pre>
+<h2>Platform Differences at a Glance</h2>
+<table><thead><tr><th>Platform</th><th>Backend</th><th>Denial symptom</th><th>Known partial cases</th></tr></thead><tbody><tr><td>Linux (modern kernel)</td><td>Landlock</td><td><code>EACCES</code></td><td>older ABIs</td></tr><tr><td>Linux (bwrap path)</td><td>bubblewrap read-only bind</td><td><code>EROFS</code> text</td><td>—</td></tr><tr><td>macOS</td><td>Seatbelt</td><td><code>EPERM</code></td><td>—</td></tr><tr><td>Windows</td><td>ACL restricted token</td><td>environment ACL gaps</td><td>Everyone and hard-link boundaries</td></tr></tbody></table>
+<h2>The Boundary with Approval</h2>
+<p>Approval answers whether <strong>the operation the model wants to do</strong> is granted passage; the sandbox answers what <strong>the process can actually touch</strong>. The two are configured and enforced independently: a <code>never</code> approval does not lift the sandbox, and a <code>danger-full-access</code> sandbox does not bypass approval. Permission presets (such as <code>workspace-write</code> + <code>ask</code>) only bind the two knobs into named presets; enforcement still belongs to each one (see <a href="permission-model.html">approval model</a>).</p>
+      <div class="pagenav"><a class="card prev" href="permission-model.html"><div class="label">Previous</div><div class="title">The Approval Model: ask/never Decisions</div></a><a class="card next" href="plan-mode.html"><div class="label">Next</div><div class="title">Plan Mode: Look Before You Act</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

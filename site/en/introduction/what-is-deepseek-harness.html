@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>What is DeepSeek Harness — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item active" href="what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../introduction/what-is-deepseek-harness.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Introduction / What is DeepSeek Harness</div>
+      <h1>What Is DeepSeek Harness</h1>
+<blockquote><p>DeepSeek Harness is an agent harness that runs on Node.js: it is not a chatbot but an <strong>everything-is-a-plugin</strong>, Cordis-driven agent runtime platform — reading code, editing files, running commands, and debugging programs in your project directory, and persisting all of it in a replayable event log.</p></blockquote>
+<h2>One-Sentence Definition</h2>
+<p>DeepSeek Harness (abbreviated <code>dsh</code>) is an <strong>open-source agent harness</strong>. It is not bound to any UI: the Web interface, the CLI, the headless one-shot runner, and the Agent Client Protocol (ACP) automation server are just different shells over the same core. Three keywords are key to understanding it:</p>
+<table><thead><tr><th>Positioning keyword</th><th>Meaning</th></tr></thead><tbody><tr><td><strong>Agent harness</strong></td><td>A complete runtime platform carrying &quot;model + tools + memory + strategy&quot;, not an API wrapper and not a single CLI</td></tr><tr><td><strong>Everything is a plugin</strong></td><td>Every part of the product is a Cordis plugin — the model adapters, the tool registry, the session log, and the agent loop itself; any part can be replaced from configuration</td></tr><tr><td><strong>Event sourcing</strong></td><td>Session history is an append-only <code>SessionEvent</code> log; the context the model sees is <em>derived</em> from the log, and replay, fork, resume, and telemetry all rebuild from the same event stream</td></tr></tbody></table>
+<h2>Technical Positioning: Architectural Differences from Peer Products</h2>
+<p>The difference from terminal-native tools such as Claude Code is not a feature list but an <strong>architectural pattern</strong>:</p>
+<table><thead><tr><th>Product</th><th>Architectural pattern</th><th>Runs in</th><th>Extension</th><th>History storage</th></tr></thead><tbody><tr><td><strong>DeepSeek Harness</strong></td><td>Plugin-based harness (Cordis plugin tree)</td><td>Node.js process</td><td>plugins/bundles (cordis.yml)</td><td>event-sourced session log</td></tr><tr><td>Claude Code</td><td>Terminal-native agentic loop (single-file bundle)</td><td>local process</td><td>hooks / MCP / skills</td><td>JSONL transcript</td></tr><tr><td>Cursor / Copilot</td><td>IDE-integrated autocomplete + chat</td><td>inside the IDE process</td><td>IDE extension API</td><td>cloud</td></tr><tr><td>OpenHands</td><td>Docker-containerized agent runtime</td><td>container</td><td>SDK / CLI</td><td>workspace files</td></tr></tbody></table>
+<p>The core difference: <strong>DeepSeek Harness makes the loop itself a replaceable plugin</strong>. <code>ctx.agentLoop</code> is just one concrete implementation of the public <code>Agent</code> contract (<code>dsh-agent-loop</code>); extension plugins depend on <code>ctx.agents</code> and never directly on agent-loop — so swapping a driver, adopting a different scheduling policy, or even delegating turns to another product requires no patching.</p>
+<h2>End-to-End Example: From Input to Output</h2>
+<p>When you type &quot;fix the failing tests in this repository&quot; into the Web UI, here is what the system does:</p>
+<pre><code class="language-text">┌────────────────────────────────────────────────────────────┐
+│1. Shell layer (dsh web → Web UI / CLI / ACP / Python SDK)  │
+│    dsh --profile web starts the app; input → Agent inbox   │
+├────────────────────────────────────────────────────────────┤
+│2. Loop layer (core/agent-loop — ctx.agentLoop)             │
+│    turn/start → claim inbox → assemble prompt + schema     │
+├────────────────────────────────────────────────────────────┤
+│3. Assembly layer (core/system-prompt — ctx.systemPrompt)   │
+│    sections by order + ctx.tools.schemas() tool list       │
+├────────────────────────────────────────────────────────────┤
+│4. Model layer (llm/llm — ctx.llm)                          │
+│    agent/request → llm/stream streaming → assistant/chunk* │
+├────────────────────────────────────────────────────────────┤
+│5. Tool layer (core/tools — ctx.tools)                      │
+│    tool/call → pre-execute approve → execute → post-execute│
+│    → actual: bash / read / write / grep / subagent ...     │
+├────────────────────────────────────────────────────────────┤
+│6. Persistence layer (core/session + persistence)           │
+│    model-visible facts → SessionEvent → JSONL/SQLite       │
+└────────────────────────────────────────────────────────────┘</code></pre>
+<p>A typical agentic turn may contain multiple steps; each step is one model request plus the tools it calls:</p>
+<table><thead><tr><th>Step</th><th>AI decision</th><th>Tool call</th><th>Result</th></tr></thead><tbody><tr><td>1</td><td>Look at the test output first</td><td><code>bash(&quot;pnpm run test&quot;)</code></td><td>3 failing test cases</td></tr><tr><td>2</td><td>Locate the failing files</td><td><code>grep(&quot;it(.*fails&quot;, &quot;src/&quot;)</code></td><td>locations of the test files</td></tr><tr><td>3</td><td>Read the source code</td><td><code>read(&quot;src/foo.test.ts&quot;)</code></td><td>the test code</td></tr><tr><td>4</td><td>Fix the implementation</td><td><code>edit(&quot;src/foo.ts&quot;, old, new)</code></td><td>file modified</td></tr><tr><td>5</td><td>Verify the fix</td><td><code>bash(&quot;pnpm run test&quot;)</code></td><td>all pass</td></tr></tbody></table>
+<p>Each step is the model's autonomous decision — it decides which tool to use, what arguments to pass, and when to stop. That is what &quot;agentic&quot; means; and <strong>every model-visible input at each step is appended to the session log</strong>, a hard runtime invariant that distinguishes DeepSeek Harness from other products (see <a href="../internals/invariants.html">Runtime Invariants</a>).</p>
+<h2>What It Is Not</h2>
+<ul><li><strong>Not a chatbot</strong>: the output is not a plain-text reply but actual file modifications, command executions, and state changes</li><li><strong>Not an API wrapper</strong>: it has its own tool system, permission model, context engineering, session management, and plugin ecosystem</li><li><strong>Not a monolithic kernel</strong>: there is no privileged kernel that needs patching — you extend dsh by mounting plugins alongside other plugins; every registration is a side effect and is automatically undone when the plugin is unloaded</li><li><strong>Not a blind executor</strong>: every sensitive operation passes through both an approval policy (<code>ask</code>/<code>never</code>) and a sandbox policy (<code>read-only</code>/<code>workspace-write</code>)</li></ul>
+<h2>Why &quot;Everything Is a Plugin&quot;</h2>
+<p>Pluginization is not a slogan but four concrete benefits:</p>
+<ul><li><strong>Replaceability</strong>: swapping a model provider, a filesystem backend, or even the entire loop implementation requires only a composition-configuration change</li><li><strong>Composability</strong>: a running <code>dsh</code> is a plugin tree built by a profile stacking bundles and patch layers in order; <code>--dump-config</code> prints the actual configuration tree on your machine</li><li><strong>Auditability</strong>: every registration has a corresponding disposer (resource-release function) that unwinds as expected on reload and teardown, with no leaked global state</li><li><strong>Self-modification</strong>: plugins can dynamically define, run, and stop other plugins (see <a href="../agent/self-modification.html">Self-Modification</a>) — the underlying capability of the extension ecosystem</li></ul>
+<p>The cost is the need to understand Cordis's plugin model (five core concepts suffice to get started, see <a href="../core/cordis.html">Cordis: The Foundation of Everything-as-a-Plugin</a>) and the attendant loading-order, scope, and event-dispatch semantics.</p>
+<h2>Quick Start</h2>
+<pre><code class="language-sh"># Run directly from npm (starts the Web UI at http://127.0.0.1:3080)
+npx @deepseek-ai/dsh web
+
+# Run from source
+git clone https://github.com/deepseek-ai/deepseek-harness.git
+cd deepseek-harness
+pnpm install &amp;&amp; pnpm run build
+pnpm dsh web</code></pre>
+<p>After startup, open <strong>Settings → Models</strong>, enter your DeepSeek API key, select a workspace, and you can start a conversation (see <a href="../features/web-ui.html">Web UI</a>).</p>
+      <div class="pagenav"><a class="card next" href="architecture-overview.html"><div class="label">Next</div><div class="title">Architecture Overview: The Plugin-Based Layering</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

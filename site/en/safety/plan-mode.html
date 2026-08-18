@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Plan Mode: Look Before You Act — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="../tools/what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="../tools/filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="../tools/shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="../tools/search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="../tools/task-management.html">Task Management: The todo_write Snapshot</a><a class="item" href="../tools/web.html">Web Access: Search and Fetch</a><a class="item" href="../tools/subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="../tools/workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="sandbox.html">The Sandbox: Process Isolation</a><a class="item active" href="plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../safety/plan-mode.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Safety / Plan Mode: Look Before You Act</div>
+      <h1>Plan Mode: Look Before You Leap</h1>
+<blockquote><p>A source-based analysis of DeepSeek Harness's Plan Mode: the <code>plan:policy</code> prompt section, the <code>exit_plan_mode</code> tool, the <code>/plan</code> command, and pre-step appending of logged state — as well as its boundary with the enforced sandbox/approval restrictions as <strong>soft guidance</strong>.</p></blockquote>
+<h2>What Plan Mode Is</h2>
+<p>Plan mode is <strong>log-recorded, per-agent collaborative state</strong> owned by <code>dsh-plan-mode</code> (<code>ctx.planMode</code>, <code>PlanModeController</code>): while active, every model request includes a section of deployment-held guidance.</p>
+<pre><code class="language-yaml"># Configuration (PlanModeConfig)
+plan-mode:
+  config:
+    section: |
+      You are in plan mode. Do not modify files. Research and present a plan
+      using the exit_plan_mode tool, starting with a `#` heading.</code></pre>
+<p>A missing, blank, or non-string <code>section</code>, as well as any unknown key, fails at plugin load. While plan mode is active, the exact <code>section</code> text renders as the <code>plan:policy</code> system-prompt section at order 50; when inactive it <strong>contributes no text at all</strong>.</p>
+<h2>Soft Guidance, Not Enforced Restriction</h2>
+<p>Plan mode is <strong>soft guidance</strong> — it steers the model through the prompt rather than enforcing:</p>
+<table><thead><tr><th>Mechanism</th><th>Type</th><th>Enforced?</th></tr></thead><tbody><tr><td><code>plan:policy</code> section</td><td>prompt</td><td>no (soft guidance)</td></tr><tr><td>sandbox mode</td><td><code>SandboxMode</code></td><td>yes</td></tr><tr><td>approval policy</td><td><code>ApprovalPolicy</code></td><td>yes</td></tr></tbody></table>
+<p><strong>Neither</strong> the sandbox mode <strong>nor</strong> the approval policy <strong>reads or writes plan state</strong> — deployments must configure them separately (wanting &quot;read-only, no writes&quot; in plan mode requires configuring both <code>sandbox: read-only</code> and the approval policy).</p>
+<h2>Logged State and Resume</h2>
+<p><code>plan/mode</code> (<code>{ active: boolean }</code>) is a log-only, whole-value-replacement session event: durable and replayable, <strong>never entering the model transcript</strong>.</p>
+<pre><code class="language-ts">foldPlanMode(events, end?)  // returns the last recorded value in the prefix; false when there is none</code></pre>
+<p>The effective state is always a pure fold of the session log — resume, forks, and compaction can restore it without a live mirror; the UI observes committed switches via <code>session/event</code>.</p>
+<h2>Pending Selections and Pre-Step Appending</h2>
+<pre><code class="language-ts">get(agent: Agent): { active: boolean; pending?: boolean }
+set(agent: Agent, active: boolean): 'committed' | 'queued' | 'cancelled' | 'noop'</code></pre>
+<p>Because every session event sits within a turn, a user selection stays <strong>pending</strong> until the next accepted in-turn pre-step appends it before deriving the request:</p>
+<ul><li>While the agent runs, the only append point is the front-registered <code>agent/pre-step</code> listener — it observes each candidate request step, calls the downstream listener first, and appends only after the downstream accepts the step</li><li>Between turns the selection appends immediately (<code>committed</code>); within a turn it stays pending (<code>queued</code>)</li><li>Appending a user selection also records a plugin-sourced <code>user/message</code> notification — only when the last recorded request header describes a different state (the model is notified exactly when the context changes, never repeatedly)</li></ul>
+<h2>The Exit Tool and the <code>/plan</code> Command</h2>
+<h3><code>exit_plan_mode</code></h3>
+<ul><li><strong>Stays registered</strong> while plan mode is inactive — entering/leaving plan mode only changes the prompt section, never the request's tool catalog (the schema is stable)</li><li>Executing outside plan mode fails</li><li>In plan mode: requires a complete markdown plan starting with a <code>#</code> heading, submitted for review through the <strong>user-interaction seam</strong> (<code>ctx.userQuestions</code>)</li><li>Approved → <code>{ approved: true }</code> plus a silent (non-narrated) pending exit, appended by the next accepted in-turn pre-step — the plan guidance stays in effect for the rest of the assistant's current batch of tool calls</li><li>&quot;Keep planning&quot; → a failing call carrying user feedback, which the model uses to revise and resubmit</li><li>A missing interaction channel or a service reload during review → the call fails, <strong>never silently leaving plan mode</strong></li></ul>
+<h3>The <code>/plan</code> Command</h3>
+<p>When <code>ctx.commands</code> is composed, the plugin registers <code>/plan [off|message]</code>:</p>
+<ul><li>Bare <code>/plan</code> → selects plan mode</li><li>Any other non-empty message → selects plan mode first, then submits the text via <code>agent.steer()</code>, making it an ordinary logged user message for the next step under the plan guidance</li><li>The exact argument <code>off</code> → selects inactive (and cancels the pending entry before it is appended and becomes visible to the request)</li></ul>
+<h2>Lifecycle Sketch</h2>
+<pre><code class="language-text">User: /plan
+  → plan/mode { active: true } (between turns → committed)
+  → next pre-step appends → the plan:policy section enters the request
+Model: [read-only research] … exit_plan_mode(plan)
+  → userQuestions review
+  → approved → pending exit
+  → next pre-step appends plan/mode { active: false } → normal guidance resumes</code></pre>
+<h2>Comparison with the Reference Implementation</h2>
+<p>Claude Code's Plan Mode switches a permission context via <code>EnterPlanModeTool</code>/<code>ExitPlanModeV2Tool</code> (<code>prepareContextForPlanMode()</code> read-only mode, restored on exit), with separate plan-file persistence and an approval flow. DeepSeek Harness's version is simpler: <strong>plan state is a log fold, the guidance is a prompt section, and exiting is a tool call with review</strong> — there is no separate permission-context switch; permissions are each governed by the sandbox/approval policies (which is exactly what the &quot;soft guidance&quot; design means).</p>
+      <div class="pagenav"><a class="card prev" href="sandbox.html"><div class="label">Previous</div><div class="title">The Sandbox: Process Isolation</div></a><a class="card next" href="../features/web-ui.html"><div class="label">Next</div><div class="title">Web UI: The Console in Your Browser</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>

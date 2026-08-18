@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Web Access: Search and Fetch — DeepSeek Harness Whitepaper</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">A Plugin-Based Agent Architecture Whitepaper</span></span></a>
+    <div class="sec">Introduction</div><a class="item" href="../introduction/what-is-deepseek-harness.html">What is DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">Architecture Overview: The Plugin-Based Layering</a><a class="item" href="../introduction/why-this-whitepaper.html">Why This Whitepaper</a><div class="sec">Core Mechanics</div><a class="item" href="../core/cordis.html">Cordis: The Everything-Is-a-Plugin Foundation</a><a class="item" href="../core/the-loop.html">The Agentic Loop: Core of the Autonomous Loop</a><a class="item" href="../core/session.html">The Session Log: The Event-Sourced Source of Truth</a><a class="item" href="../core/system-prompt.html">Dynamic System Prompt Assembly</a><a class="item" href="../core/scope.html">Agent Scope: Visibility Is Lifecycle</a><div class="sec">Tool System</div><a class="item" href="what-are-tools.html">Tool System Design: The AI's Hands</a><a class="item" href="filesystem.html">Filesystem Tools: Atomic Read, Write, Edit</a><a class="item" href="shell-execution.html">Command Execution: Bash and PowerShell</a><a class="item" href="search-navigation.html">Search and Navigation: glob/grep Locating</a><a class="item" href="task-management.html">Task Management: The todo_write Snapshot</a><a class="item active" href="web.html">Web Access: Search and Fetch</a><a class="item" href="subagent.html">Subagents: Delegation and Orchestration</a><a class="item" href="workflow.html">Workflows: Scripted Multi-Agent Orchestration</a><div class="sec">Context Engineering</div><a class="item" href="../context/compaction.html">Context Compaction: Managing Memory</a><a class="item" href="../context/token-budget.html">Token Budgets and the Request Header</a><div class="sec">Agent Mechanics</div><a class="item" href="../agent/preset.html">Agent Presets: Composing Capabilities Per Session</a><a class="item" href="../agent/goal.html">Same-Session Goals: Persistent Completion Objectives</a><a class="item" href="../agent/self-modification.html">Self-Modification: Plugins as the Runtime</a><div class="sec">Extensibility</div><a class="item" href="../extensibility/plugins.html">Plugin Development: From Registration to Effect</a><a class="item" href="../extensibility/hooks.html">Hooks: Bridging Claude Code and Codex</a><a class="item" href="../extensibility/skills.html">Skills: The Skill System</a><a class="item" href="../extensibility/sdk.html">SDK and Protocols: Automation Access</a><div class="sec">Safety</div><a class="item" href="../safety/why-safety-matters.html">Safety Matters: The Threat Model</a><a class="item" href="../safety/permission-model.html">The Approval Model: ask/never Decisions</a><a class="item" href="../safety/sandbox.html">The Sandbox: Process Isolation</a><a class="item" href="../safety/plan-mode.html">Plan Mode: Look Before You Act</a><div class="sec">Features &amp; Usage</div><a class="item" href="../features/web-ui.html">Web UI: The Console in Your Browser</a><a class="item" href="../features/providers.html">Model Providers: Multi-Endpoint Routing</a><a class="item" href="../features/commands.html">Human Commands: The Slash Plane</a><a class="item" href="../features/jobs.html">Background Jobs: Managing Long-Running Work</a><div class="sec">Internals</div><a class="item" href="../internals/layout.html">Repository Layout: A Map of Packages</a><a class="item" href="../internals/invariants.html">Runtime Invariants: The Architecture Proving Itself</a><a class="item" href="../internals/telemetry-identity.html">Identity and Telemetry: Anonymity and Auditing</a>
+    <div class="controls"><button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">☾</span></button><a class="ctrl" id="lang-toggle" href="../../tools/web.html"><span class="ico">◉</span>中文</a></div>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">Home</a> / Tool System / Web Access: Search and Fetch</div>
+      <h1>Web Access: Search and Fetch</h1>
+<blockquote><p>The web access seam spans <strong>two operations</strong> (search and fetch) on the same <code>ctx.web</code> service: the model submits a query, and the provider returns a normalized source list or fetched body — swapping backends does not change the contract between model and tools.</p></blockquote>
+<h2>Why One Capability Contains Two Operations</h2>
+<p>Search and fetch share neither request schema nor business logic, yet they are deliberately designed into the same <code>ctx.web</code> middle layer:</p>
+<ul><li>One owner of provider-selection policy</li><li>One abort and error vocabulary</li><li>One product-facing &quot;how this harness accesses the Web&quot; configuration surface</li></ul>
+<p>Providers register <strong>capabilities</strong> (<code>WebSearchProvider</code> or <code>WebFetchProvider</code>), not tools; the model-facing names, schemas, prompt guidance, and presentation all live in the single consumer <code>dsh-tool-web</code>.</p>
+<h2>Capability Breakdown</h2>
+<table><thead><tr><th>Role</th><th>Package</th><th>Description</th></tr></thead><tbody><tr><td>Service Definition</td><td><code>dsh-web</code></td><td><code>ctx.web</code> + provider registry</td></tr><tr><td>Service Provider</td><td><code>dsh-web-search-exa</code> / <code>dsh-web-search-perplexity</code> / <code>dsh-web-search-deepseek</code> / <code>dsh-web-fetch-http</code></td><td>three search backends + one fetch backend</td></tr><tr><td>Consumer</td><td><code>dsh-tool-web</code></td><td><code>web_search</code> / <code>web_fetch</code> tool schemas</td></tr></tbody></table>
+<h2>Search Request and Result</h2>
+<p>The model-facing tool parameter is <strong>only a <code>query</code></strong>; <code>maxResults</code> is the consumer's own cap (the <code>searchMaxResults</code> config, default <code>8</code>), passed through the seam and enforced on return — if a provider returns more, the seam truncates <code>sources[]</code> and sets <code>truncated</code>.</p>
+<pre><code class="language-text">Model: web_search(&quot;What is DeepSeek Harness&quot;)
+  → ctx.web.searchX({ query, maxResults: 8 })   ← the selected provider
+  → normalized result { content?, sources[], truncated }
+  → web card (kind: 'search'): structured sources + optional answer</code></pre>
+<pre><code class="language-ts">/** Normalized search outcome. */
+interface WebSearchResult {
+  /** Optional provider-generated answer text, search context, or summary. */
+  readonly content?: string
+  /** Citeable sources, already truncated to the request's maxResults. */
+  readonly sources: readonly WebSearchSource[]
+  /** True when the seam dropped sources to honor maxResults. */
+  readonly truncated: boolean
+}</code></pre>
+<p>Sources always have <code>url</code>; <code>title</code>, <code>snippet</code>, and <code>publishedAt</code> are optional — because not every provider returns them (Perplexity's citations may be URLs only), and <strong>forcing an adapter to invent fields would make the seam lie</strong>. <code>dsh-tool-web</code> renders <code>title ?? hostname(url)</code> for display.</p>
+<h2>Fetch Request and Result</h2>
+<pre><code class="language-ts">/** What one fetch-capable backend is asked to retrieve. */
+interface WebFetchRequest {
+  readonly url: string
+}</code></pre>
+<p>The request <strong>deliberately omits</strong> timeouts, formats, prompts, and extraction controls: cancellation is a direct execution parameter, and presentation plus high-level LLM concerns lie outside safe retrieval.</p>
+<p><strong>An HTTP status code is part of the resource's state and is not automatically a failure</strong>: even a successful network fetch that receives <code>404</code> or <code>500</code> still produces a <code>WebFetchResult</code> (status code + length-limited decoded body). <code>url</code> is the final URL after allowed redirects. <code>WebError</code> is reserved for resources that cannot be fetched or represented safely.</p>
+<h2>Abort and Error Vocabulary</h2>
+<p><code>ctx.web</code> owns a unified error and abort vocabulary: cancellation signals propagate directly to providers; <code>WebError</code> distinguishes cannot-retrieve-safely (network failure, invalid URL) from business failure (resource does not exist). An aborted query returns a structured error rather than partial results.</p>
+<h2>Presentation: The web Card</h2>
+<p>A completed web retrieval is presented with the <code>{ card: 'web', kind: 'search' | 'fetch', … }</code> render intent:</p>
+<table><thead><tr><th>kind</th><th>Fields</th><th>Fallback</th></tr></thead><tbody><tr><td><code>search</code></td><td>structured <code>sources</code> / <code>answer?</code> / <code>truncated</code></td><td>UIs without web capability fall back to the raw result content</td></tr><tr><td><code>fetch</code></td><td><code>url</code> / <code>statusCode</code> / <code>truncated</code></td><td>same as above</td></tr></tbody></table>
+<p>The body is not duplicated into the view — capable UIs render the structured source list directly; the rest use the raw content.</p>
+<h2>Tool Schema Highlights</h2>
+<table><thead><tr><th>Tool</th><th>Behavior</th></tr></thead><tbody><tr><td><code>web_search</code></td><td>Searches the Web and returns a list of citable sources</td></tr><tr><td><code>web_fetch</code></td><td>Fetches a single URL and returns the status code and a length-limited body</td></tr></tbody></table>
+<p>Both tools keep provider selection behind <code>ctx.web</code>, so the model-visible schema stays stable when backends are swapped — another instance of the capability seam.</p>
+      <div class="pagenav"><a class="card prev" href="task-management.html"><div class="label">Previous</div><div class="title">Task Management: The todo_write Snapshot</div></a><a class="card next" href="subagent.html"><div class="label">Next</div><div class="title">Subagents: Delegation and Orchestration</div></a></div>
+      <div class="footer">DeepSeek Harness Whitepaper · Compiled from repository source and docs · Static site, no external dependencies</div>
+    </div>
+  </main>
+</div>
+<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>
+</body>
+</html>
