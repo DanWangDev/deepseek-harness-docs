@@ -14,6 +14,11 @@ const ASSETS = join(ROOT, 'assets')
 const nav = JSON.parse(readFileSync(join(ROOT, 'nav.json'), 'utf8'))
 const flat = nav.flatMap(sec => sec.items.map(it => ({ ...it, section: sec.section })))
 
+// ---------- theme toggle ----------
+const THEME_HEAD = `<script>try{var s=localStorage.getItem('dsh-theme');document.documentElement.setAttribute('data-theme',s||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch(e){}</script>`
+const THEME_BODY = `<script>(function(){var b=document.getElementById('theme-toggle');if(!b)return;var set=function(t){document.documentElement.setAttribute('data-theme',t);b.querySelector('.ico').textContent=t==='dark'?'☀':'☾';};set(document.documentElement.getAttribute('data-theme'));b.onclick=function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';set(n);try{localStorage.setItem('dsh-theme',n);}catch(e){}};})();</script>`
+const THEME_BTN = `<button type="button" id="theme-toggle" class="ctrl" title="Toggle theme"><span class="ico">\u263E</span></button>`
+
 // ---------- inline markdown ----------
 const esc = s => s
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -204,12 +209,14 @@ function pageHtml(file, title, section, body, prev, next, breadcrumb) {
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>${esc(title)} — DeepSeek Harness 白皮书</title>
 <link rel="stylesheet" href="${css}"/>
+${THEME_HEAD}
 </head>
 <body>
 <div class="layout">
   <aside class="sidebar">
     <a class="brand" href="${home}"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
     ${secNav}
+    <div class="controls">${THEME_BTN}</div>
   </aside>
   <main class="main">
     <div class="content">
@@ -220,6 +227,7 @@ function pageHtml(file, title, section, body, prev, next, breadcrumb) {
     </div>
   </main>
 </div>
+${THEME_BODY}
 </body>
 </html>`
 }
@@ -242,8 +250,10 @@ function indexHtml(body) {
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>DeepSeek Harness 白皮书 — 插件化 Agent 架构</title>
 <link rel="stylesheet" href="assets/style.css"/>
+${THEME_HEAD}
 </head>
 <body>
+  <div class="topbar">${THEME_BTN}</div>
   <div class="hero">
     <div class="logo-big">DSH</div>
     ${body}
@@ -253,6 +263,7 @@ function indexHtml(body) {
     </div>
   </div>
   <div class="grid">${cards}</div>
+${THEME_BODY}
 </body>
 </html>`
 }
