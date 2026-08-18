@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>自我修改：插件即运行时 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="preset.html">Agent Preset：按会话组装能力</a><a class="item" href="goal.html">同会话目标：持久完成目标</a><a class="item active" href="self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / Agent 机制 / 自我修改：插件即运行时</div>
+      <h1>自我修改：插件即运行时</h1>
+<blockquote><p>DeepSeek Harness 允许 agent 定义、运行并停止带版本的 Cordis 包——不是沙箱里的玩具脚本，而是<strong>动态 Package 生命周期</strong>：定义注册表 + vm 沙箱 + 动态工具注册，让 agent 能够修改自己的运行时。</p></blockquote>
+<h2>什么是自我修改</h2>
+<p>&quot;自我修改&quot;指 agent（或插件）在运行时动态创建新的插件并挂载进正在运行的 Cordis 树。这是扩展生态的底层能力：一个插件可以定义另一个插件，而不需要重启进程。</p>
+<p>实现是 <strong>cordis 工具集</strong>（<code>@deepseek-ai/dsh-tool-cordis</code>，不在任何随产品发布的树中，需要显式选择启用）：</p>
+<table><thead><tr><th>工具</th><th>行为</th></tr></thead><tbody><tr><td><code>cordis_define</code></td><td>定义一个新的动态 Package（带版本的 Cordis 包）</td></tr><tr><td><code>cordis_inspect_list</code> / <code>cordis_inspect_query</code> / <code>cordis_inspect_self</code></td><td>查询运行时元数据（获准公开的部分）</td></tr><tr><td><code>cordis_run</code></td><td>运行动态 Package</td></tr><tr><td><code>cordis_stop</code></td><td>停止动态 Package</td></tr><tr><td><code>cordis_undefine</code></td><td>撤销定义</td></tr></tbody></table>
+<h2>动态运行时</h2>
+<p>工具集注入 <code>@deepseek-ai/dsh-cordis-host-runner</code> 提供的 <code>ctx.dynamicCordisRunner</code>——它拥有<strong>定义注册表</strong>和 <strong>vm 沙箱</strong>；组合缺少它时这些工具不会激活。</p>
+<pre><code class="language-text">模型: cordis_define({ name, version, code })
+  → 定义注册表记录带版本的包
+  → cordis_run 在 vm 沙箱中挂载该 Package
+  → Package 的 apply(ctx) 执行：注册工具、服务、事件监听器
+  → 动态注册的工具出现在下一组装（request/header 记录工具集变化）
+  → cordis_stop 卸载：注册的副作用按 disposer 撤销</code></pre>
+<p>运行中的 Package 在停止、undefine 或 DSH 重启前可以注册<strong>额外的模型可见工具</strong>；发生这类工具集变化时，系统会记录<strong>完整且有变动的请求头</strong>——模型可见即已记录的不变量对动态工具同样成立。</p>
+<h2>沙箱与生命周期</h2>
+<p><code>cordis_run</code> 的 Package 代码在 vm 沙箱中执行——它访问的是 harness 的插件 API（<code>apply(ctx)</code>），但运行在受控的 JS 上下文中。动态 Package 与静态插件的契约相同：注册是可逆的副作用，dispose 时撤销。</p>
+<h2>为什么这很重要</h2>
+<p>自我修改把&quot;扩展 harness&quot;从<strong>开发时活动</strong>变成<strong>运行时活动</strong>：</p>
+<ul><li>agent 可以在会话中定义自己的工具并立即使用</li><li>插件作者可以在不重启进程的情况下迭代组合</li><li>新能力可以&quot;现场锻造&quot;，而不是预编译进发行版</li></ul>
+<p>代价是信任：动态 Package 代码拥有真实运行时的访问权——因此 cordis 工具集<strong>默认不启用</strong>，需要显式选择，且其文档明确标注&quot;不在任何随产品发布的树中&quot;。</p>
+<h2>相关机制</h2>
+<ul><li><strong>HMR（热模块替换）</strong>：<code>dsh-client-hmr</code> 与 Cordis 的 reload 机制让组合层插件可以热更新</li><li><strong>Hooks 桥接</strong>：外部 <code>hooks.json</code> 是另一条扩展路径（见<a href="../extensibility/hooks.html">Hooks</a>）</li><li><strong>Extensions seam</strong>：<code>packages/extensions</code> 包组允许 agent 定义带版本 Cordis 包、运行 host+浏览器两半、写码前查询获准公开的运行时元数据（<code>ctx.cordisInspect</code>）</li></ul>
+<p>三者构成完整的&quot;运行时扩展&quot;图景：HMR 是开发期热更新，hooks 是外部脚本回调，cordis 工具集与 extensions 是 agent 驱动的动态定义。</p>
+      <div class="pagenav"><a class="card prev" href="goal.html"><div class="label">上一页</div><div class="title">同会话目标：持久完成目标</div></a><a class="card next" href="../extensibility/plugins.html"><div class="label">下一页</div><div class="title">插件开发：从注册到生效</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

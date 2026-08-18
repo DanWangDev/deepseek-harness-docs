@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Hooks：Claude Code/Codex 桥接 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="plugins.html">插件开发：从注册到生效</a><a class="item active" href="hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="skills.html">Skills：技能系统</a><a class="item" href="sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 可扩展性 / Hooks：Claude Code/Codex 桥接</div>
+      <h1>Hooks：Claude Code/Codex 桥接</h1>
+<blockquote><p>从源码角度解析 DeepSeek Harness 的 Hooks 桥接：如何把 Claude Code 与 Codex 的 <code>hooks.json</code> 事件桥接到 harness 的类型化拦截点——<code>dsh-hook-protocol</code> 共享协议库 + <code>dsh-hooks-claude-code</code> / <code>dsh-hooks-codex</code> 两个桥插件。</p></blockquote>
+<h2>设计哲学：规范扩展面是 harness 的拦截点</h2>
+<p>&quot;native hook&quot; 在 DeepSeek Harness 里就是一个<strong>普通插件</strong>——<code>agent/pre-step</code>、<code>tools/pre-execute</code> 等类型化拦截点就是规范扩展面。Hooks 桥仅为<strong>外部 <code>hooks.json</code> 兼容路径</strong>：让你已有的 Claude Code/Codex hooks 配置在 dsh 上继续工作。</p>
+<table><thead><tr><th>包</th><th>角色</th></tr></thead><tbody><tr><td><code>dsh-hook-protocol</code></td><td>共享 wire-protocol <strong>库</strong>（非插件，不注册不注入）：matcher、<code>runHook</code>、输出解析与合并</td></tr><tr><td><code>dsh-hooks-claude-code</code></td><td>Claude Code hooks 桥（Cordis 插件）</td></tr><tr><td><code>dsh-hooks-codex</code></td><td>Codex hooks 桥（Cordis 插件）</td></tr></tbody></table>
+<h2>协议库原语</h2>
+<pre><code class="language-text">matchesMatcher(matcher, subject)   — claude 模式：literal-or-regex；codex：恒 regex
+runHook(bash, hook, opts, now)     — stdin payload + env 经 ctx.shell；timeoutSec 或默认 10 分钟
+parseHookOutput(output)            — exit 2 阻塞；其他非阻塞
+mergeHookOutputs(...)              — 权限 deny &gt; ask &gt; allow；halt 粘滞；additionalContext 累积</code></pre>
+<p><code>runHook</code> 从不 throw——executor 拒绝时返回 <code>HookOutput</code> exitCode <code>undefined</code>。合并规则：权限<strong>deny &gt; ask &gt; allow</strong>，halt 粘滞，block 原因用 <code>\n\n</code> 连接，<code>additionalContext</code>/<code>systemMessages</code> 按顺序累积。</p>
+<h2>会话事件：hook/invoked 与 hook/result</h2>
+<p>桥接层为每次 hook 调用记录一对<strong>仅日志</strong>的会话事件：</p>
+<ul><li><code>hook/invoked</code> + <code>hook/result</code> 按 <code>handlerId</code> 配对</li><li><code>stderrSummary</code> 截断到 <code>stderrSummaryMaxChars</code>（默认 500）</li><li>非 <code>SurfaceEventType</code>——不进入模型 transcript，但持久可审计</li><li>记录必须发生在已打开的轮次内（<code>SessionStart</code> 不生成 hook 记录，它在轮次 1 之前运行）</li></ul>
+<h2>Claude Code 桥的事件映射</h2>
+<table><thead><tr><th>CC hook 事件</th><th>harness 拦截点</th><th>行为</th></tr></thead><tbody><tr><td><code>SessionStart</code></td><td><code>agent/session-start</code>（emit）</td><td>注入 <code>agent.inject()</code> 上下文</td></tr><tr><td><code>UserPromptSubmit</code></td><td><code>agent/pre-step</code>（waterfall）</td><td>deny → <code>PreStepDecision.reject</code></td></tr><tr><td><code>PreToolUse</code></td><td><code>tools/pre-execute</code>（waterfall）</td><td>deny/ask → <code>PreToolDecision.deny/ask</code></td></tr><tr><td><code>PostToolUse</code></td><td><code>tools/post-execute</code>（waterfall）</td><td>检查/替换结果</td></tr><tr><td><code>Stop</code></td><td><code>agent/turn-stopping</code>（serial）</td><td>经 <code>steer()</code> 强制下一步</td></tr><tr><td><code>SubagentStart</code> / <code>SubagentStop</code></td><td><code>subagent/start</code> / <code>subagent/end</code>（emit）</td><td>注入 / 只观察</td></tr></tbody></table>
+<p>matcher subject：工具名、会话 source、常量 <code>agent_type</code> = <code>general-purpose</code>。同一拦截点多个 hooks 串行执行，most-restrictive 折叠。stdin 携带 <code>session_id</code> + <code>transcript_path</code>（经 <code>ctx.sessionPersistence.locate(session.header)</code>）。</p>
+<h2>Codex 桥</h2>
+<p>Codex 桥覆盖 5/10 个 hook 点（<code>PreToolUse</code>/<code>PostToolUse</code>/<code>SessionStart</code>/<code>UserPromptSubmit</code>/<code>Stop</code>），差异：</p>
+<ul><li><strong>regex-only</strong> matcher（无 literal 模式）</li><li>snake_case payload + <code>turn_id</code>/<code>model</code>，<strong>无尾换行</strong></li><li>无 plugin env、无 pre-tool 批准/重写</li><li><code>block</code>（exit 2）→ <code>PreStepDecision.reject</code> / <code>PreToolDecision.deny</code></li><li><code>transcript_path</code> 缺省发 <code>null</code></li></ul>
+<h2>配置</h2>
+<pre><code class="language-yaml"># claude-code 桥（示意）
+hooks-claude-code:
+  config:
+    configPath: .claude/settings.json   # 现有 hooks.json 位置
+    pluginRoot: .claude/plugins
+    projectDir: .
+    defaultTimeoutMs: 600000
+    stderrSummaryMaxChars: 500</code></pre>
+<p>两桥的 <code>configPath</code> 是进程级（per-session hook config 是未实现的 TODO）。</p>
+<h2>阻塞文本与注入来源</h2>
+<p>注入上下文带显式来源 <code>{ kind: 'plugin', plugin: 'hooks-claude-code' | 'hooks-codex' }</code>；阻塞文本精确如 <code>blocked by PreToolUse hook</code>——模型可以明确区分&quot;被 hook 拦下&quot;与&quot;工具失败&quot;。</p>
+<h2>与权限模型的协同</h2>
+<p>hooks 的 PreToolUse 桥接插入 <code>tools/pre-execute</code> waterfall——它在审批服务<strong>之前或之后</strong>取决于注册顺序，但最终都要经过单调的 <code>ToolGuard</code>（见<a href="../safety/permission-model.html">审批模型</a>）：hook 可以 deny，无法把另一个组件 deny 的调用翻回 allow。</p>
+      <div class="pagenav"><a class="card prev" href="plugins.html"><div class="label">上一页</div><div class="title">插件开发：从注册到生效</div></a><a class="card next" href="skills.html"><div class="label">下一页</div><div class="title">Skills：技能系统</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>沙箱机制：进程隔离 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="permission-model.html">审批模型：ask/never 决策</a><a class="item active" href="sandbox.html">沙箱机制：进程隔离</a><a class="item" href="plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 安全 / 沙箱机制：进程隔离</div>
+      <h1>沙箱机制：进程隔离</h1>
+<blockquote><p>系统性梳理 DeepSeek Harness 的进程沙箱：<code>SandboxMode</code> 三档文件效果策略、bwrap/Landlock/Seatbelt/Windows-ACL 四种本地后端、<code>full</code>/<code>partial</code> 强制执行完整性，以及消费方如何区分&quot;被沙箱拒绝&quot;与&quot;沙箱自身失败&quot;。</p></blockquote>
+<h2>什么是沙箱</h2>
+<p>沙箱（<code>ctx.sandbox</code>）把<strong>与宿主共享文件系统和内核的子进程 argv</strong> 包装在文件效果策略中，而不将消费方耦合到特定平台运行器：</p>
+<ul><li>这是权限系统<strong>之外</strong>的第二道防线——即使审批放行，进程仍在沙箱策略下运行</li><li>网络与进程可见性<strong>不在</strong> <code>SandboxMode</code> 的定义范围内</li><li>容器、microVM 和远程执行是完整能力 seam 的同级实现，而非 <code>ctx.sandbox</code> 的提供方</li></ul>
+<h2>能力拆解</h2>
+<table><thead><tr><th>角色</th><th>包</th></tr></thead><tbody><tr><td>Service Definition</td><td><code>dsh-sandbox</code>（<code>ctx.sandbox</code> + 词汇）</td></tr><tr><td>Service Provider</td><td><code>dsh-sandbox-local</code>：Linux bwrap/Landlock、macOS Seatbelt、Windows ACL 受限令牌后端</td></tr><tr><td>Consumer</td><td><code>dsh-bash-sandbox</code>、<code>dsh-pwsh-sandbox</code>（以及任何需要限制子进程的消费方）</td></tr></tbody></table>
+<h2>三档模式</h2>
+<pre><code class="language-ts">/** File-effect policy for confined processes. */
+type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'</code></pre>
+<table><thead><tr><th>模式</th><th>允许</th><th>说明</th></tr></thead><tbody><tr><td><code>read-only</code></td><td>仅必需的 sink（如 <code>/dev/null</code>）</td><td>拒绝写入；POSIX runner 授予 shell 所需的 <code>/dev/null</code>，Windows ACL runner 不授予任何显式可写根</td></tr><tr><td><code>workspace-write</code></td><td>工作区根 + 后端定义的临时区域</td><td>常规 agent 工作模式</td></tr><tr><td><code>danger-full-access</code></td><td>一切</td><td><strong>绕过隔离</strong>；消费方直接 spawn 原始 argv，不调用 <code>ctx.sandbox</code></td></tr></tbody></table>
+<p>只有前两种模式可以发送给提供方；<code>SandboxPolicy</code> 只携带受约束模式。</p>
+<h2>强制执行完整性：full vs partial</h2>
+<pre><code class="language-ts">/** Enforcement completeness for this host. `partial` means an active backend or older kernel ABI cannot govern every promised file effect. */
+type SandboxEnforcement = 'full' | 'partial'</code></pre>
+<p>强制执行完整性是<strong>后端报告的事实</strong>：</p>
+<ul><li><code>full</code>：后端管控了该模式承诺的所有文件效果</li><li><code>partial</code>：活跃后端或较旧的 kernel ABI 仅管控其中一个子集——<strong>要求绝对保证的消费方必须拒绝或向上暴露这一区别</strong></li></ul>
+<p>当前的部分强制执行情形包括较旧的 Landlock ABI，以及 Windows ACL runner 的 Everyone 与硬链接边界。</p>
+<h2>逐调用策略</h2>
+<p>完整执行策略<strong>按每次能力调用解析并携带</strong>——它不是固定在提供方上的：</p>
+<pre><code class="language-ts">/** The complete file-effect policy resolved for one capability call. */
+interface SandboxExecutionPolicy {
+  mode: SandboxMode
+  /** Absolute root directory workspace-write may write under. */
+  workspaceRoot: string
+  sessionId?: SessionId
+}</code></pre>
+<ul><li>普通工具调用从调用会话的不可变 cwd 派生 <code>workspaceRoot</code>；部署配置是没有 agent 时的回退值</li><li>root 先按文件系统语义规范化，再做词法规范化——包含 <code>symlink/..</code> 的 cwd 会标识 spawn 出的进程实际运行的目录</li><li>两个消费方可以同时以不同策略受限（bash 在 <code>read-only</code> 下，而受限子 agent 需要其状态目录可写）</li><li>已批准的提权重试是一次<strong>新的调用</strong>，携带更宽的策略</li></ul>
+<h2>argv 包装与分类方言</h2>
+<p><code>SandboxProvider.confine</code> 返回消费方实际 spawn 的内容：</p>
+<pre><code class="language-ts">/** A confine result: the argv to spawn in place of the caller's own, plus enforcement completeness. */
+interface ConfinedArgv {
+  argv: string[]                        // runner + profile + 分隔符 + 调用方 argv
+  enforcement: SandboxEnforcement
+  denialSignatures: readonly string[]   // 后端拒绝方言（EROFS / EACCES / EPERM）
+  runnerFailureRules: readonly RunnerFailureRule[]
+}</code></pre>
+<p><strong>两种正交的 stderr 分类器</strong>：</p>
+<table><thead><tr><th>分类器</th><th>含义</th><th>消费方行为</th></tr></thead><tbody><tr><td><code>denialSignatures</code></td><td>沙箱<strong>正常工作</strong>时受限命令被阻止的迹象</td><td>判定&quot;沙箱拒绝了这条命令&quot;</td></tr><tr><td><code>runnerFailureRules</code></td><td>沙箱 runner <strong>在执行命令之前</strong>拒绝或失败</td><td>判定&quot;沙箱基础设施故障&quot;，上报为基础设施问题而非普通任务失败</td></tr></tbody></table>
+<p><code>RunnerFailureRule</code> 要求：进程以非零状态退出（可选允许退出码门控）+ 余下某一 stderr 行中的致命签名；先按整行精确匹配移除信息性排除项——<strong>退出状态本身永远不能证明 runner 失败</strong>。</p>
+<h2>消费方流程（以 bash-sandbox 为例）</h2>
+<pre><code class="language-text">bash(&quot;rm -rf /etc&quot;)
+  → 解析沙箱策略（会话 cwd → workspaceRoot, mode）
+  → ctx.sandbox.confine(argv, policy)
+  → spawn 包装后的 argv（bwrap/Landlock/Seatbelt/Windows-ACL）
+  → 命令失败？
+     先检查 runnerFailureRules → 沙箱故障，报基础设施错误
+     再检查 denialSignatures → 沙箱拒绝，报&quot;受限命令被阻止&quot;
+     都不匹配 → 普通命令失败（exit code）</code></pre>
+<h2>平台差异速查</h2>
+<table><thead><tr><th>平台</th><th>后端</th><th>拒绝现象</th><th>已知 partial 情形</th></tr></thead><tbody><tr><td>Linux（现代内核）</td><td>Landlock</td><td><code>EACCES</code></td><td>较旧 ABI</td></tr><tr><td>Linux（bwrap 路径）</td><td>bubblewrap 只读绑定</td><td><code>EROFS</code> 文本</td><td>—</td></tr><tr><td>macOS</td><td>Seatbelt</td><td><code>EPERM</code></td><td>—</td></tr><tr><td>Windows</td><td>ACL 受限令牌</td><td>环境 ACL 缺口</td><td>Everyone 与硬链接边界</td></tr></tbody></table>
+<h2>与审批的边界</h2>
+<p>审批（approval）回答&quot;<strong>模型想做的这个操作</strong>是否放行&quot;；沙箱回答&quot;<strong>进程实际能碰什么</strong>&quot;。两者独立配置、独立执行：<code>never</code> 审批不解除沙箱，<code>danger-full-access</code> 沙箱不绕过审批。权限预设（<code>workspace-write</code> + <code>ask</code> 等）只是把两个旋钮捆成具名预设，强制执行仍各归各（见<a href="permission-model.html">审批模型</a>）。</p>
+      <div class="pagenav"><a class="card prev" href="permission-model.html"><div class="label">上一页</div><div class="title">审批模型：ask/never 决策</div></a><a class="card next" href="plan-mode.html"><div class="label">下一页</div><div class="title">计划模式：先看后做</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

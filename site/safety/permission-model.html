@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>审批模型：ask/never 决策 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="why-safety-matters.html">安全至关重要：威胁模型</a><a class="item active" href="permission-model.html">审批模型：ask/never 决策</a><a class="item" href="sandbox.html">沙箱机制：进程隔离</a><a class="item" href="plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 安全 / 审批模型：ask/never 决策</div>
+      <h1>审批模型：ask/never 决策</h1>
+<blockquote><p>详解 DeepSeek Harness 的用户审批 seam（<code>packages/interaction/user-approval</code>）：每次工具调用如何经过 <code>tools/pre-execute</code> 裁决、<code>ask</code>/<code>never</code> 策略如何按会话生效、审计事件对如何落盘——以及&quot;不可绕过&quot;的设计保证。</p></blockquote>
+<h2>一个核心问题</h2>
+<p>用户审批 seam 回答一个问题：<strong>这个具体操作是否可以继续？</strong> 它拥有共享的请求/结果词汇、<code>ctx.approval</code> 分发服务、<code>approval/request</code> 应答者 waterfall、仅记录日志的审计事件对，以及按会话的 <code>ask</code>/<code>never</code> 策略。</p>
+<p>调用方（如 <code>dsh-tools</code> 和 <code>dsh-tool-bash</code>）消费闭合的结果，<strong>除非结果为 <code>allowed-once</code>，否则一律拒绝</strong>（fail closed）。</p>
+<h2>结果词汇：闭合且失败即拒绝</h2>
+<pre><code class="language-ts">/** Closed approval outcomes: a one-shot grant, explicit rejection, withdrawn request, or unavailable answerer. */
+type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'</code></pre>
+<ul><li><code>allowed-once</code> 仅授权所询问的那<strong>一个</strong>操作</li><li>调用方对 <code>rejected</code>、<code>cancelled</code> 和 <code>unavailable</code> 均执行拒绝</li><li><strong>缺失、不负责该请求、抛异常或不合规的应答者都会产生 <code>unavailable</code>，而非放行</strong></li></ul>
+<p>每个请求获得全新的 <code>ApprovalRequestId</code>——品牌化 id 将 <code>approval/asked</code> 与 <code>approval/decided</code> 审计事件配对，同时不让审批 id 与工具调用 id 互换。</p>
+<h2>按会话策略：ask / never</h2>
+<pre><code class="language-ts">/** A session's approval policy — what happens to an ask BEFORE any interactive answerer sees it. */
+type ApprovalPolicy = 'ask' | 'never'</code></pre>
+<table><thead><tr><th>策略</th><th>行为</th><th>适用</th></tr></thead><tbody><tr><td><code>ask</code>（默认）</td><td>委托给组合的应答者链；无应答者时 fall through 到 fail-closed <code>unavailable</code></td><td>交互式使用</td></tr><tr><td><code>never</code></td><td>确定性返回 <code>rejected</code>，不分发任何应答者</td><td>CI、无人值守、严格 headless</td></tr></tbody></table>
+<p>生效值为<strong>会话日志中最后一条 <code>approval/policy</code> 事件</strong>，回退到服务配置——<code>setApprovalPolicy(session, policy)</code> 是唯一的写入路径，因此回放能重建覆盖值。</p>
+<h2>请求与裁决流程</h2>
+<pre><code class="language-ts">/** Readonly same-process permission question. callId links to an already presented tool call. */
+interface ApprovalRequest {
+  readonly agent: Agent
+  readonly toolName: string
+  readonly callId?: CallId
+  readonly reason?: string
+  readonly signal?: AbortSignal
+}</code></pre>
+<p><code>ctx.approval.request(req)</code> 的完整流程：</p>
+<pre><code class="language-text">要求：发起请求的会话处于一个尚未结束的轮次内
+  → 追加 approval/asked（审计）
+  → never 策略？→ 确定性 rejected（在 waterfall 分发之前！）
+  → approval/request waterfall：应答者链
+     第一个应答者返回结果（否则调用 next() 委托）
+  → 追加 approval/decided（审计，配对）
+  → 以该结果完成</code></pre>
+<p><strong><code>never</code> 在服务内部、waterfall 分发之前强制执行</strong>——即使后来以 <code>prepend</code> 注册的应答者也无法绕过它。</p>
+<h2>与工具流水线的衔接</h2>
+<p><code>tools/pre-execute</code> 的 <code>ask</code> 决策调用审批服务：</p>
+<pre><code class="language-text">tools/pre-execute (waterfall)
+  → { kind: 'ask', reason } → ctx.approval.request({ agent, toolName, callId, reason })
+      → allowed-once → 继续执行
+      → rejected / cancelled / unavailable → 物化为 deny 错误结果
+  → ToolGuard（单调）仍可施加最终拒绝</code></pre>
+<p>审批请求<strong>刻意省略工具参数</strong>：应答者通过 <code>callId</code> 将提示附加到已流式输出的工具调用上，而非渲染另一份可能漂移的副本。</p>
+<h2>审计：ask/decided 事件对</h2>
+<ul><li>审计事件仅写入日志，<strong>不进入模型 transcript</strong></li><li>模型可见的行为是调用方派生的工具结果与当前运行时上下文快照</li><li>两种策略都会把各自的完整当前含义贡献给<strong>缓存安全的运行时上下文快照</strong>——审批状态变化时，会在保留的历史后追加一份新的完整快照，而不改写请求头中的系统提示词</li></ul>
+<h2>权限预设：把两个旋钮捆成一个</h2>
+<p><code>dsh-permission-presets</code>（<code>ctx.permissionPresets</code>）把两个独立强制执行的旋钮——沙箱模式 <code>sandbox/mode</code> 与审批策略 <code>approval/policy</code>——捆成具名预设：</p>
+<table><thead><tr><th>预设</th><th>sandbox</th><th>approval</th></tr></thead><tbody><tr><td><code>workspace-write</code>（默认）</td><td><code>workspace-write</code></td><td><code>ask</code></td></tr><tr><td><code>danger-full-access</code></td><td><code>danger-full-access</code></td><td><code>never</code></td></tr><tr><td><code>custom</code>（保留名）</td><td>派生出的非预设状态</td><td>—</td></tr></tbody></table>
+<p>预设不拥有强制执行——执行/提示词叙述/回放仍读各自旋钮；<code>set(session, name)</code> 只记意图并<strong>经各旋钮自己的 setter 写入</strong>，因此回放无需追赶状态。要求施加隔离的 <code>ctx.shell</code> 执行器 + <code>ctx.approval</code>；配置错误在插件加载时即失败。</p>
+<h2>与参考实现的对比</h2>
+<p>Claude Code 的权限模型是 Allow/Ask/Deny 三级体系 + 五层规则来源 + Denial Tracking 死循环防护。DeepSeek Harness 的模型更简但更强：</p>
+<table><thead><tr><th>维度</th><th>Claude Code</th><th>dsh</th></tr></thead><tbody><tr><td>决策</td><td>allow / ask / deny</td><td>allowed-once / rejected / cancelled / unavailable</td></tr><tr><td>规则来源</td><td>8 个来源按优先级合并</td><td>会话策略（ask/never）+ 组合配置</td></tr><tr><td>不可绕过性</td><td>规则可被更高优先级覆盖</td><td>单调 guard：deny 无法被翻回 allow</td></tr><tr><td>审计</td><td>settings 写入 + 会话记录</td><td><code>approval/asked</code> + <code>approval/decided</code> 事件对（可回放）</td></tr></tbody></table>
+      <div class="pagenav"><a class="card prev" href="why-safety-matters.html"><div class="label">上一页</div><div class="title">安全至关重要：威胁模型</div></a><a class="card next" href="sandbox.html"><div class="label">下一页</div><div class="title">沙箱机制：进程隔离</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

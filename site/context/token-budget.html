@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Token 预算与请求头 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="compaction.html">上下文压缩：记忆的整理术</a><a class="item active" href="token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 上下文工程 / Token 预算与请求头</div>
+      <h1>Token 预算与请求头</h1>
+<blockquote><p>从源码角度揭示 DeepSeek Harness 的 token 预算管理：请求信封如何作为会话状态落盘、路由容量如何记录、<code>ctx.tokenMeter</code> 如何从日志回放估算——上下文窗口的动态计算与自动压缩的触发依据。</p></blockquote>
+<h2>请求信封：日志是纯函数</h2>
+<p>每次模型请求的完整信封作为会话状态写入日志——<code>request/header</code> 事件：</p>
+<pre><code class="language-text">request/header (reason: 'initial' | 'resume')   ← 每个 agent loop 实例的边界
+request/header (reason: 'change')               ← 请求配置变化时的新完整快照
+request/context                                 ← 路由或容量变化时记录</code></pre>
+<pre><code class="language-ts">/** Logged request state outside derived history: call config, system prompt, and tools. */
+interface EpochHeader {
+  config: LlmCallConfig
+  adapterDefaults?: LlmCallConfigAdapterDefaults
+  system?: string
+  tools?: ToolSchema[]
+}</code></pre>
+<p><code>foldRequestHeader(events)</code> 通过选择最新快照重建请求头——<strong>每个对话请求都是日志的纯函数</strong>。空系统提示词和空工具列表都表示为字段缺失，与请求构建方式一致。</p>
+<h2>路由容量：request/context</h2>
+<pre><code class="language-ts">/** Registration-bound metadata for one resolved model route. */
+interface RequestContext {
+  provider: string
+  model: string
+  /** Maximum combined request and response context in tokens, when advertised. */
+  contextWindow?: number
+}</code></pre>
+<p><code>request/context</code> 是独立的已记录状态，在同一步骤内紧随 <code>request/header</code> 追加，且<strong>仅在提供方、模型或容量与上一条记录不同时追加</strong>。容量描述的是路由，不是请求输入——把它折叠进 <code>EpochHeader</code> 会让一次容量变化被登记为请求信封的 <code>change</code>。适配器不公布容量的路由以缺失 <code>contextWindow</code> 记录。</p>
+<h2>Token 记账</h2>
+<p>token 记账读取每个步骤的 <code>assistant/chunk { type: 'usage' }</code> 记录；如果没有用量分片，则将 <code>assistant/message.usage</code> 作为已提交步骤的后备。失败的模型请求尝试没有 assistant 消息，因此其用量分片是持久化的记账记录——<strong>模型输出与其 token 记账一起旅行</strong>，没有单独的 usage 记录。</p>
+<h2><code>ctx.tokenMeter</code>：可回放快照</h2>
+<p><code>@deepseek-ai/dsh-token-meter</code>（<code>ctx.tokenMeter</code>，<code>packages/llm/token-meter</code>）提供独立的不可变回放快照：</p>
+<pre><code class="language-ts">/** Immutable replayable measurement snapshot. */
+interface TokenMeasurement {
+  logRevision: number        // 已消费持久事件数（= 下一未读 seq）
+  baseline: { kind: 'usage' | 'estimated' }  // 锚点
+  surfaceDeltaTokens: number // 自锚点起的 surface 增量
+  totalTokens: number
+  surfaceTokens: number
+  nodes: TokenSurfaceNode[]  // { seq, tokens }
+}</code></pre>
+<ul><li><code>baseline.kind</code> 区分锚点是提供方上报的精确 usage 还是估算</li><li>surface 顺序是权威的——替换节点 seq 可高于位置靠后者</li><li>快照不随回放折叠增长；token meter 是<strong>单例</strong>，压缩 seam 与计价消费方共用它</li></ul>
+<h2>预算决策链</h2>
+<pre><code class="language-text">请求发出 → usage 分片落盘（assistant/chunk）
+  → token meter 从日志回放估算当前占用
+  → 压力压缩（compactIfNeeded）评估：
+      pressure（压力策略）或 context-overflow（规范化溢出）
+  → 超出阈值 → compaction 折叠旧 surface 为摘要
+  → 请求头重建 → 下一轮请求</code></pre>
+<p><code>dsh-compaction-basic</code> 拥有阈值、保留尾部策略、溢出上限与失败处理；token meter 只负责&quot;现在用了多少&quot;。压缩的详细机制见<a href="compaction.html">上下文压缩</a>。</p>
+<h2>max-tokens 语义</h2>
+<p>提供 <code>maxTokens</code> 时，它必须是正安全整数，限制每次对话模型请求的输出；省略时，系统在写入请求 header 前填入确切模型的适配器默认值。只要轮次内任何步骤以 <code>max-tokens</code> 结束，整个轮次就以 <code>max-tokens</code> 结束——截断事实优先于 <code>completed</code>（见<a href="../core/session.html">会话日志</a>的 <code>TurnEndReason</code>）。</p>
+      <div class="pagenav"><a class="card prev" href="compaction.html"><div class="label">上一页</div><div class="title">上下文压缩：记忆的整理术</div></a><a class="card next" href="../agent/preset.html"><div class="label">下一页</div><div class="title">Agent Preset：按会话组装能力</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,83 @@
+[
+  {
+    "section": "介绍",
+    "items": [
+      { "file": "introduction/what-is-deepseek-harness", "title": "什么是 DeepSeek Harness" },
+      { "file": "introduction/architecture-overview", "title": "架构全景：插件化分层详解" },
+      { "file": "introduction/why-this-whitepaper", "title": "为什么写这份白皮书" }
+    ]
+  },
+  {
+    "section": "核心机制",
+    "items": [
+      { "file": "core/cordis", "title": "Cordis：一切皆插件的基座" },
+      { "file": "core/the-loop", "title": "Agentic Loop：自主循环的核心" },
+      { "file": "core/session", "title": "会话日志：事件溯源的唯一真源" },
+      { "file": "core/system-prompt", "title": "System Prompt 动态组装" },
+      { "file": "core/scope", "title": "Agent 作用域：可见性即生命周期" }
+    ]
+  },
+  {
+    "section": "工具系统",
+    "items": [
+      { "file": "tools/what-are-tools", "title": "工具系统设计：AI 的双手" },
+      { "file": "tools/filesystem", "title": "文件系统工具：原子读写编辑" },
+      { "file": "tools/shell-execution", "title": "命令执行：Bash 与 PowerShell" },
+      { "file": "tools/search-navigation", "title": "搜索与导航：glob/grep 定位" },
+      { "file": "tools/task-management", "title": "任务管理：todo_write 快照" },
+      { "file": "tools/web", "title": "Web 访问：搜索与抓取" },
+      { "file": "tools/subagent", "title": "子 Agent：委派与编排" },
+      { "file": "tools/workflow", "title": "工作流：脚本化多 Agent 编排" }
+    ]
+  },
+  {
+    "section": "上下文工程",
+    "items": [
+      { "file": "context/compaction", "title": "上下文压缩：记忆的整理术" },
+      { "file": "context/token-budget", "title": "Token 预算与请求头" }
+    ]
+  },
+  {
+    "section": "Agent 机制",
+    "items": [
+      { "file": "agent/preset", "title": "Agent Preset：按会话组装能力" },
+      { "file": "agent/goal", "title": "同会话目标：持久完成目标" },
+      { "file": "agent/self-modification", "title": "自我修改：插件即运行时" }
+    ]
+  },
+  {
+    "section": "可扩展性",
+    "items": [
+      { "file": "extensibility/plugins", "title": "插件开发：从注册到生效" },
+      { "file": "extensibility/hooks", "title": "Hooks：Claude Code/Codex 桥接" },
+      { "file": "extensibility/skills", "title": "Skills：技能系统" },
+      { "file": "extensibility/sdk", "title": "SDK 与协议：自动化接入" }
+    ]
+  },
+  {
+    "section": "安全",
+    "items": [
+      { "file": "safety/why-safety-matters", "title": "安全至关重要：威胁模型" },
+      { "file": "safety/permission-model", "title": "审批模型：ask/never 决策" },
+      { "file": "safety/sandbox", "title": "沙箱机制：进程隔离" },
+      { "file": "safety/plan-mode", "title": "计划模式：先看后做" }
+    ]
+  },
+  {
+    "section": "功能与使用",
+    "items": [
+      { "file": "features/web-ui", "title": "Web UI：浏览器中的控制台" },
+      { "file": "features/providers", "title": "模型提供方：多端点路由" },
+      { "file": "features/commands", "title": "人类命令：斜杠平面" },
+      { "file": "features/jobs", "title": "后台任务：长时运行管理" }
+    ]
+  },
+  {
+    "section": "内部机制",
+    "items": [
+      { "file": "internals/layout", "title": "仓库布局：包的地图" },
+      { "file": "internals/invariants", "title": "运行时不变式：架构的自证" },
+      { "file": "internals/telemetry-identity", "title": "身份与遥测：匿名与审计" }
+    ]
+  }
+]

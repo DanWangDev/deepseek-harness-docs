@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>会话日志：事件溯源的唯一真源 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="the-loop.html">Agentic Loop：自主循环的核心</a><a class="item active" href="session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="system-prompt.html">System Prompt 动态组装</a><a class="item" href="scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 核心机制 / 会话日志：事件溯源的唯一真源</div>
+      <h1>会话日志：事件溯源的唯一真源</h1>
+<blockquote><p><code>Session</code> 是一份由类型化 <code>SessionEvent</code> 组成的<strong>仅追加日志</strong>，是 agent 完整交互历史的唯一真源。LLM 消息历史从日志<em>派生</em>而来，从不单独存储——回放即从同一组事件重新派生。</p></blockquote>
+<h2>事件溯源模型</h2>
+<p>DeepSeek Harness 的会话不是&quot;消息数组&quot;，而是一份<strong>事件日志</strong>：</p>
+<ul><li>每个条目携带单调的 <code>seq</code>（<code>seq = log.length</code>）、<code>time</code>（epoch 毫秒）与按 <code>type</code> 判别的 <code>data</code> payload</li><li>事件是<strong>无损 JSON</strong>——<code>Session.append</code> 在源头强制这一要求，错误事件绝不会进入日志</li><li>日志只增不改：模型历史、UI 回放、fork、恢复、transcript、遥测全部派生自同一事件流</li></ul>
+<p>持久化后端（JSONL / SQLite）无损保存每个事件，<strong>包括</strong> <code>assistant/chunk</code> 原始分片——<code>seq</code> 必须连续，因此不能从规范日志中过滤分片。</p>
+<h2><code>SessionEventMap</code>：事件词汇</h2>
+<p>核心会话事件（可通过声明合并扩展——插件通过 <code>declare module</code> 添加额外事件类型）：</p>
+<table><thead><tr><th>事件</th><th>payload</th><th>作用</th></tr></thead><tbody><tr><td><code>turn/start</code></td><td><code>{ turn }</code></td><td>打开轮次；拒绝、空输入、取消或失败可能让它无步骤关闭</td></tr><tr><td><code>turn/end</code></td><td><code>{ turn, reason }</code></td><td>以 <code>TurnEndReason</code> 关闭轮次</td></tr><tr><td><code>step/start</code> / <code>step/end</code></td><td><code>{ turn, step }</code></td><td>打开/关闭一个步骤（一次模型调用 + 它请求的工具执行）</td></tr><tr><td><code>user/message</code></td><td><code>UserMessage</code></td><td>用户角色消息：直接提示词、<code>agent.inject()</code> 注入上下文、目标续行轮次</td></tr><tr><td><code>assistant/chunk</code></td><td><code>{ turn, step, chunk }</code></td><td>原始流式分片——token 级回放保真</td></tr><tr><td><code>assistant/message</code></td><td><code>{ turn, step, message, usage? }</code></td><td>组装后的 assistant 消息（派生历史使用它）；携带该步骤的 token 记账</td></tr><tr><td><code>tool/call</code></td><td><code>{ turn, step, callId, name, arguments }</code></td><td>模型请求一次工具调用；<code>arguments</code> 是模型产出的原始 JSON 字符串（未解析）</td></tr><tr><td><code>tool/result</code></td><td><code>{ turn, step, message, error?, meta? }</code></td><td>完成的工具调用的模型可见结果 + 可选内部失败身份 + 工具私有 <code>meta</code></td></tr><tr><td><code>todo/write</code></td><td><code>{ todos }</code></td><td>全量列表快照；latest-write-wins</td></tr><tr><td><code>request/header</code></td><td><code>{ header, reason }</code></td><td>下次请求的完整信封（调用配置 + 系统提示词 + 工具 schema）</td></tr><tr><td><code>request/context</code></td><td><code>RequestContext</code></td><td>请求解析到的路由的上下文元数据（仅路由或容量变化时记录）</td></tr><tr><td><code>session/end-seed</code></td><td><code>{}</code></td><td>标记构造种子结束；之前的 seq 来自 seed（恢复/fork/回放）</td></tr></tbody></table>
+<p>三个产生消息的<strong>surface 事件</strong>（<code>user/message</code>、<code>assistant/message</code>、<code>tool/result</code>）携带 <code>surfaceOp</code> 与 <code>sourceEventSeqs</code>——它们声明自己如何加入有序的派生 surface：</p>
+<pre><code class="language-ts">/** How a session event entered the ordered surface. */
+type SurfaceOp =
+  | 'append'
+  | { op: 'replace'; start: number; end: number }</code></pre>
+<p><code>append</code> 是常规尾部追加；<code>replace</code> 遮蔽从 <code>start</code> 到 <code>end</code>（含两端）的 surface 条目并在原位置插入新事件——这是压缩（compaction）执行 surface 变更的唯一方式。</p>
+<h2>派生历史：模型看到什么</h2>
+<p><code>Session.deriveMessages()</code> 将事件日志投影为模型看到的 <code>Message[]</code>。投影规则：</p>
+<table><thead><tr><th>事件</th><th>投影</th></tr></thead><tbody><tr><td><code>user/message</code></td><td>携带确切 <code>content</code> 的 user 消息</td></tr><tr><td><code>assistant/message</code></td><td>一条 assistant 消息，包含生成它的提供方和模型；<strong>内容为空的消息跳过</strong>（被 max-tokens 截断且无内容的步骤仍记录事件以保存用量）</td></tr><tr><td><code>tool/result</code></td><td>携带 <code>tool-result</code> 块的 user 消息</td></tr><tr><td>其余事件（<code>turn/<em></code>、<code>step/</em></code>、chunk）</td><td>结构信息，不投影为消息</td></tr></tbody></table>
+<p>投影是<strong>缓存且冻结</strong>的：每个 surface 节点首次出现时投影一次，surface 重写触发重建；返回的 <code>Message</code> 对象共享且深冻结，通过投影修改已记录历史在类型上不可表达。</p>
+<h2>请求头：日志是纯函数</h2>
+<p>请求信封（<code>EpochHeader</code>）作为会话状态写入日志：</p>
+<pre><code class="language-ts">/** Logged request state outside derived history: call config, system prompt, and tools. */
+interface EpochHeader {
+  /** The conversation's call configuration (provider, model, reasoning effort, and sampling scalars). */
+  config: LlmCallConfig
+  /** Effective config fields materialized from the exact adapter rather than proposed by a caller. */
+  adapterDefaults?: LlmCallConfigAdapterDefaults
+  /** Rendered system prompt text; absent for a system-less request. */
+  system?: string
+  /** Assembled tool schemas; absent for a tool-less request. */
+  tools?: ToolSchema[]
+}</code></pre>
+<p>带 reason <code>'initial'</code> 或 <code>'resume'</code> 的完整快照记录每个 agent loop 实例的边界；之后请求变化时以 reason <code>'change'</code> 记录另一份完整快照。<strong>每个对话请求都是日志的纯函数</strong>——<code>foldRequestHeader(events)</code> 通过选择最新快照重建请求头。</p>
+<h2>轮次的结束原因</h2>
+<pre><code class="language-ts">/** Why a turn ended. Merge-extensible sum type. */
+interface TurnEndReasonMap {
+  completed: { kind: 'completed' }
+  aborted: { kind: 'aborted'; reason: TurnEndCancelCause }
+  blocked: { kind: 'blocked' }
+  error: { kind: 'error'; error: LlmFailure }
+  'max-tokens': { kind: 'max-tokens' }
+  interrupted: { kind: 'interrupted' }
+}</code></pre>
+<p><code>max-tokens</code> 与模型调用中同名的 <code>FinishReason</code> 对应：只要轮次内有任何步骤以 <code>max-tokens</code> 结束，整个轮次就以 <code>max-tokens</code> 结束——截断事实优先于 <code>completed</code>。<code>interrupted</code> 是唯一不会由任何 loop 发出的原因：它由崩溃恢复合成。</p>
+<h2>Fork：会话的派生</h2>
+<p><code>ctx.sessions.fork(source, boundary?, childSessionId?)</code> 是活跃会话 fork 的策略 API：</p>
+<ul><li>选取到 <code>boundary</code> seq（含）为止的源事件（默认为当前最后一个事件）</li><li><strong>要求所选前缀结束时没有开放轮次</strong>——API 拒绝结束于开放轮次内的前缀，而不是静默截断</li><li>创建活跃子会话，包含深克隆的种子事件和子会话元数据（<code>parentSession</code>、<code>seedLength</code> 及继承的 <code>cwd</code>）</li></ul>
+<p>fork 出的子会话会追加 <code>session/end-seed</code> 标记自己的种子边界——在它之前的事件具有更小的 seq，且来自种子，属于一个已结束的生命周期。</p>
+<h2>执行封闭与独立事件</h2>
+<p>一个轮次包围一次模型循环执行，而不是整个会话日志。插件所属的纯日志事件（如 <code>compaction/*</code>、<code>hook/invoked</code>）可以出现在 <code>turn/end</code> 与下一个 <code>turn/start</code> 之间——占用事件 seq 但不递增轮次编号。需要即时持久性屏障的生产方会显式等待 <code>ctx.sessions.flush(session)</code>。</p>
+<p>可选的 <code>dsh-session/invariant</code> 配套插件强制核心拥有的关系：轮次与步骤编号、执行事件封闭、同一步骤内工具调用/结果配对。</p>
+<h2>模型可见即已记录</h2>
+<p>这是会话日志设计的<strong>运行时不变量</strong>：抵达模型请求的一切都必须能从日志重建。因此新增一项模型可见输入就需要新增一个会话事件——扩展 <code>SessionEventMap</code> 并从日志渲染。新事件若未被识别且没有 <code>ignorable: true</code> 标记，读取方<strong>必须拒绝</strong>重建会话，而不是静默丢弃。</p>
+      <div class="pagenav"><a class="card prev" href="the-loop.html"><div class="label">上一页</div><div class="title">Agentic Loop：自主循环的核心</div></a><a class="card next" href="system-prompt.html"><div class="label">下一页</div><div class="title">System Prompt 动态组装</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>子 Agent：委派与编排 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="task-management.html">任务管理：todo_write 快照</a><a class="item" href="web.html">Web 访问：搜索与抓取</a><a class="item active" href="subagent.html">子 Agent：委派与编排</a><a class="item" href="workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 工具系统 / 子 Agent：委派与编排</div>
+      <h1>子 Agent：委派与编排</h1>
+<blockquote><p>从源码角度解析 DeepSeek Harness 的 subagent seam：一个 agent 如何将工作委派给子 agent，单次启动与可继续后台子 agent 的生命周期差异，以及 <code>send_message</code>/<code>interrupt_agent</code>/<code>list_agents</code> 控制工具的运作方式。</p></blockquote>
+<h2>能力定位</h2>
+<p>subagent seam 让一个 agent 将工作委派给子 agent。与 bash 一样，它是<strong>一项可选能力</strong>，不属于 agent loop——但不同于其他能力 seam：<strong>同一上下文中可共存多个提供方实现</strong>，并按名称注册（<code>ctx.subagents</code>），而 bash 只允许一个执行器。</p>
+<table><thead><tr><th>角色</th><th>包</th></tr></thead><tbody><tr><td>Service Definition</td><td><code>dsh-subagent</code>（<code>ctx.subagents</code> + 词汇）</td></tr><tr><td>Service Provider（六个）</td><td><code>dsh-subagent-spawn-in-process</code>、<code>-fork</code>、<code>-acp</code>、<code>-codex</code>、<code>-claude-code</code>、<code>-dsh-sdk</code></td></tr><tr><td>Consumer</td><td><code>dsh-tool-subagent</code>（委派）、<code>dsh-tool-subagent-control</code>（<code>send_message</code>/<code>interrupt_agent</code>/<code>list_agents</code>）、<code>dsh-tool-subagent-report</code>（子级 <code>report</code>）</td></tr></tbody></table>
+<p>提供方从&quot;新建一个子 agent&quot;（in-process）到&quot;把一个轮次委派给另一个产品&quot;（codex/claude-code/acp）千差万别——同一个接口，多个世界。</p>
+<h2>两类能力，两种发现方式</h2>
+<p>提供方通过静态描述符公布其<strong>启动时</strong>功能：</p>
+<pre><code class="language-ts">/** Which START-TIME features a provider supports. */
+interface SubagentCapabilities {
+  readonly outputSchema: boolean
+  readonly depthLimit: boolean
+  readonly toolFilter: boolean
+  readonly persona: boolean
+}</code></pre>
+<p>请求依赖提供方不具备的能力时被<strong>明确拒绝</strong>（<code>SubagentError('UNSUPPORTED_CAPABILITY')</code>）——绝不会接受后静默忽略。<strong>可继续</strong>子 agent 由继续执行管理器自行组合，以方法存在与否作为能力（<code>prepareContinuable</code>）。</p>
+<h2>单次启动请求</h2>
+<pre><code class="language-ts">/** What a caller asks for when starting a ONE-SHOT subagent. */
+interface SubagentStartRequest {
+  readonly label?: string
+  /** Content delivered as the child's user message. */
+  readonly prompt: ContentBlock[]
+  /** The spawning agent. */
+  readonly parent: Agent
+  /** Cancellation signal from the spawning context (the tool's exec.signal). */
+  readonly signal: AbortSignal
+  readonly agentOptions?: AgentOptions
+  readonly outputSchema?: ObjectJsonSchema   // 需要 capability
+  readonly maxDepth?: number                  // 需要 depthLimit
+  readonly toolFilter?: ToolRestriction       // 需要 toolFilter
+  readonly persona?: string                   // 需要 persona
+}</code></pre>
+<ul><li><strong><code>toolFilter</code></strong>：进程内后端在子 agent 创建窗口应用 <code>tools.restrict()</code>——被过滤的工具从子级的提示词消失<strong>并且拒绝执行</strong>（&quot;可见性而非权限&quot;），带 loud 的未知名称校验</li><li><strong><code>persona</code></strong>：注册为子级的 <code>deployment:persona</code> section，遮蔽部署 persona（严格 <code>{{…}}</code> 插值）</li><li><strong><code>maxDepth</code></strong>：绝对委派深度上限（非负安全整数）</li><li><strong><code>outputSchema</code></strong>：对象根 JSON Schema（<code>assertObjectJsonSchema</code> 子集）；成功的子级返回匹配的 <code>structured</code> 值</li></ul>
+<h2>可继续子 agent 与 Activation</h2>
+<p><strong>可继续后台 subagent</strong> 是一份持久化子 agent 会话，至多关联一个进程内的 <strong>Activation</strong>（被重建的子 agent 处于驻留状态的时段）：</p>
+<pre><code class="language-text">persisted Session
+  -&gt; optional live Activation
+       -&gt; one retained AgentHandle
+       -&gt; Agent inbox as the only turn FIFO
+       -&gt; zero or more owned child Activations</code></pre>
+<ul><li>Activation 可以执行多个 FIFO 轮次，并在其创建的后代仍在运行期间保持驻留</li><li>Agent inbox 是<strong>唯一的队列</strong>：每条继续执行消息都会成为一个 <code>Agent.followup()</code> FIFO 轮次，接受的消息共享同一个可观测顺序</li><li><code>followup()</code> 的路由仅取决于 Activation 驻留状态：<code>running</code> → 入队；<code>waiting</code> → 唤醒；无 Activation → <strong>冷恢复</strong>一个新的 Activation</li></ul>
+<p>后续操作的权限来自确切的在线 Agent 工具上下文：已认证的 Agent 必须是持久化子 agent 在 <code>SessionHeader.parentSession</code> 中记录的<strong>直接父级</strong>。</p>
+<h2>控制工具</h2>
+<table><thead><tr><th>工具</th><th>行为</th></tr></thead><tbody><tr><td><code>subagent</code></td><td>按提供方委派（默认 <code>continuable</code>，省略参数时后台运行，runtime 自动投递结果）</td></tr><tr><td><code>subagent_fork</code></td><td>绑定 fork 后端（<code>one-shot</code>，省略参数时前台运行）</td></tr><tr><td><code>send_message</code></td><td>向可继续子 agent 投递后续消息（FIFO 轮次）</td></tr><tr><td><code>interrupt_agent</code></td><td>对在线目标 <code>Agent.cancel(cause, { keepInbox: true })</code>——中断后一次唤醒发送恢复被暂停的 FIFO 队列</td></tr><tr><td><code>list_agents</code></td><td>只读列出活跃子 agent 与后代（基于会话存储与实时注册表）</td></tr><tr><td><code>report</code></td><td>按可继续进程内子级注册的返回通道：向直接父会话写入 user-role 消息</td></tr></tbody></table>
+<p><code>interrupt_agent</code> 的鉴权：<code>{ kind: 'user', parentSessionId }</code>（人类客户端呈现持久化直接父地址）或 <code>{ kind: 'ancestor', agent }</code>（在线祖先链包含调用方）。错误的 parent 地址以 <code>UNAUTHORIZED</code> 拒绝。</p>
+<h2>委派深度与预算</h2>
+<p><code>delegationDepth</code> 是持久的会话元数据——子 agent 递归预算跨重启保留。请求的 <code>maxDepth</code> 限制子级的计算深度：超过预算的委派在启动时拒绝，防止失控的递归委派环。</p>
+<h2>与工作流的边界</h2>
+<p><a href="workflow.html">工作流</a>（<code>workflow</code> 工具）是&quot;由模型编写、启动 subagent 的编排脚本&quot;——脚本通过 <code>agent()</code> 启动子 agent，每个子 agent 归属于运行发起的那个 Agent。subagent 是单次/可继续的委派原语，workflow 是脚本化的批量编排。Ralph 循环则是&quot;面向不可变目标的前台全新 agent 工作流&quot;（见<a href="workflow.html">工作流</a>）。</p>
+      <div class="pagenav"><a class="card prev" href="web.html"><div class="label">上一页</div><div class="title">Web 访问：搜索与抓取</div></a><a class="card next" href="workflow.html"><div class="label">下一页</div><div class="title">工作流：脚本化多 Agent 编排</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

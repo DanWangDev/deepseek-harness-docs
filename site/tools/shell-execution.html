@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>命令执行：Bash 与 PowerShell — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="filesystem.html">文件系统工具：原子读写编辑</a><a class="item active" href="shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="task-management.html">任务管理：todo_write 快照</a><a class="item" href="web.html">Web 访问：搜索与抓取</a><a class="item" href="subagent.html">子 Agent：委派与编排</a><a class="item" href="workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 工具系统 / 命令执行：Bash 与 PowerShell</div>
+      <h1>命令执行：Bash 与 PowerShell</h1>
+<blockquote><p>从源码角度解析 DeepSeek Harness 的 shell 执行 seam（<code>packages/shell</code>）：<code>bash</code> 与 <code>pwsh</code> 工具如何通过 <code>ctx.shell</code> 执行命令、<code>resolve()</code> 如何拆分请求与规格、前台结果如何正交报告，以及与沙箱和后台任务如何联动。</p></blockquote>
+<h2>能力拆解</h2>
+<p>shell 执行 seam 是一个标准的能力三件套：</p>
+<table><thead><tr><th>角色</th><th>包</th><th>说明</th></tr></thead><tbody><tr><td>Service Definition</td><td><code>dsh-shell</code></td><td><code>ctx.shell</code> + 请求/结果词汇</td></tr><tr><td>Service Provider</td><td><code>dsh-bash-local</code> / <code>dsh-bash-sandbox</code></td><td>本地执行器与沙箱化执行器（Windows 组合用 <code>dsh-pwsh-local</code> / <code>dsh-pwsh-sandbox</code>）</td></tr><tr><td>Consumer</td><td><code>dsh-tool-bash</code>（<code>bash</code> schema）/ <code>dsh-tool-pwsh</code>（<code>pwsh</code> schema）</td><td>面向模型的命令工具</td></tr></tbody></table>
+<p>Windows 组合中 <code>bash</code> 由 <code>pwsh</code> 方言替代：路径采用原生 <code>C:\...</code> 形式，变量采用 <code>$env:NAME</code>，每次调用在新进程中运行，不使用持久 PTY 会话。</p>
+<h2><code>resolve()</code> 拆分：请求 vs 规格</h2>
+<p>该 seam 将<strong>面向模型的请求</strong>与执行器实际使用的<strong>完全解析后的 spec</strong> 分开：</p>
+<pre><code class="language-ts">/** A caller's execution REQUEST: optional fields are filled by ShellExecutor.resolve from config. */
+interface ShellExecRequest {
+  command: string
+  workdir?: string          // 默认：实现配置
+  timeoutMs?: number        // 实现会封顶
+  stdoutMaxBytes?: number   // 前台 stdout 捕获预算
+  signal?: AbortSignal
+  stdin?: string            // 受信任的进程内插件输入
+  env?: Record&lt;string, string&gt;
+  dshEnv?: DshEnvironment   // 受管 DSH_* 变量
+  sandboxPolicy?: SandboxExecutionPolicy
+}</code></pre>
+<p>工具层在二者之间调用 <code>ctx.shell.resolve(request)</code>（仓库的&quot;包边界处显式优于隐式&quot;规则）；<code>ShellExecSpec</code> 携带的是已解析的值（<code>workdir</code>、<code>timeoutMs</code>、<code>stdoutMaxBytes</code> 均为必填）。</p>
+<p><code>stdin</code> 和 <code>env</code> 是<strong>受信任的进程内插件输入</strong>，不由 <code>dsh-tool-bash</code> 暴露（模型需要 stdin 时用 heredoc 或管道）。本地执行器会先清除环境中的凭据，再合并调用方显式提供的 env。</p>
+<h2>前台运行：正交的结果报告</h2>
+<p>一次已完成（或被终止）的前台运行的结果<strong>独立报告</strong>——一个进程可以同时超时并以退出码 0 退出（因为它捕获了信号）：</p>
+<pre><code class="language-ts">/** The outcome of one completed (or killed) foreground run. */
+interface ShellRunResult {
+  exitCode: number | null   // 信号终止时为 null
+  signal: NodeJS.Signals | null
+  timedOut: boolean         // 执行器自身超时是否第一个切断
+  aborted: boolean          // 调用方取消是否介入
+}</code></pre>
+<p>调用方永远不会把一次被提前中断的运行误读为正常成功——<code>timedOut</code>、<code>aborted</code>、<code>signal</code>、<code>exitCode</code> 各自独立为一个字段。</p>
+<h2>后台任务：与 jobs 联动</h2>
+<p><code>bash</code> 工具的 <code>run_in_background</code> 参数（默认启用）把命令注册到通用 <code>ctx.jobs</code> 运行时：</p>
+<pre><code class="language-text">bash(&quot;pnpm run test&quot;, run_in_background: true)
+  → ctx.jobs.start({ kind: 'bash', label: 'pnpm run test', owner: agent })
+  → 返回 job id（bash-N）
+  → job_output / job_list / job_kill 三个工具收集或停止
+  → 完成通知经 agent.inject() 作为 user/message 送达</code></pre>
+<p>禁用 <code>enableRunInBackground</code> 配置（默认为 true）后，该参数会被完全移除。详见<a href="../features/jobs.html">后台任务</a>。</p>
+<h2>与沙箱联动</h2>
+<p>沙箱化执行器（<code>dsh-bash-sandbox</code>）在 spawn 前把命令 argv 包装进沙箱 runner：</p>
+<pre><code class="language-text">bash(&quot;rm -rf /etc&quot;)   sandboxPolicy = read-only
+  → ctx.sandbox.confine(argv, policy)
+  → runner argv：bwrap/Landlock/Seatbelt/Windows-ACL 包装
+  → EROFS / EACCES / EPERM 等拒绝方言被识别为 denial</code></pre>
+<p>拒绝（denial）与 runner 失败（runner failure）被区分对待：前者意味着沙箱正常工作并阻止了受限命令，后者意味着沙箱基础设施自身失败。详见<a href="../safety/sandbox.html">沙箱机制</a>。</p>
+<h2>执行语义要点</h2>
+<ul><li><strong>每次调用在新进程中运行</strong>：无持久 shell 状态；需要持久会话时使用 <code>terminal_*</code> 工具族（选择启用）</li><li>**<code>DSH_*</code> 环境命名空间**：归 harness 所有的子进程事实（如 <code>DSH_WEB_URL</code>）；执行器丢弃环境中的既有 <code>DSH_*</code> 名称后再合并受管快照，当前事实不会继承陈旧值</li><li><strong>输出截断</strong>：前台 stdout 有捕获预算；后台任务与 stderr 有各自的输出上限；截断时报告 <code>truncated</code> 并可 spill 完整流到文件（见<a href="search-navigation.html">搜索与导航</a>中的 spill 机制）</li></ul>
+<h2>工具 schema 要点</h2>
+<table><thead><tr><th>工具</th><th>行为</th></tr></thead><tbody><tr><td><code>bash</code></td><td>通过 <code>ctx.shell</code> 执行 shell 命令；支持 <code>run_in_background</code></td></tr><tr><td><code>pwsh</code></td><td>Windows 组合中的 PowerShell 方言；逐项对应 bash 工具调用</td></tr></tbody></table>
+<p>命令执行是 agent 能力的核心——<strong>完整的 shell 访问权</strong>意味着它可以做任何你在终端里能做的事，也因此需要对应的安全机制来约束这个能力（审批策略 + 沙箱策略，见<a href="../safety/why-safety-matters.html">安全</a>整组）。</p>
+      <div class="pagenav"><a class="card prev" href="filesystem.html"><div class="label">上一页</div><div class="title">文件系统工具：原子读写编辑</div></a><a class="card next" href="search-navigation.html"><div class="label">下一页</div><div class="title">搜索与导航：glob/grep 定位</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

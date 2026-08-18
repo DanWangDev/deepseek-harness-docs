@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>运行时不变式：架构的自证 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="layout.html">仓库布局：包的地图</a><a class="item active" href="invariants.html">运行时不变式：架构的自证</a><a class="item" href="telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 内部机制 / 运行时不变式：架构的自证</div>
+      <h1>运行时不变式：架构的自证</h1>
+<blockquote><p>DeepSeek Harness 的架构承诺以可机械校验的不变式落地：模型可见即已记录、guard 单调、注册是可逆副作用、作用域决定可见性与生命周期、品牌化 ID 防互换——这些不是风格，是门禁。</p></blockquote>
+<h2>第一不变量：模型可见即已记录</h2>
+<blockquote><p>抵达模型请求的一切都必须能从日志重建。</p></blockquote>
+<pre><code class="language-text">模型请求
+  ├─ 系统提示词 ──► request/header（EpochHeader.system）
+  ├─ 工具 schema ─► request/header（EpochHeader.tools）
+  ├─ 历史消息 ────► deriveMessages() ← surface 事件
+  └─ 注入上下文 ──► user/message（agent.inject() 通道）</code></pre>
+<p>由一项<strong>运行时不变量</strong>断言：新增模型可见输入就需要新增会话事件（扩展 <code>SessionEventMap</code> 并从日志渲染）。反过来的推论同样成立——<strong>模型看不见的</strong>（<code>output</code>、<code>execute</code>、<code>finalizeContent</code>、<code>timeoutMs</code>、<code>isConcurrencySafe</code>、<code>presentCall</code>/<code>presentResult</code>）绝不进入模型请求：<code>schemas()</code> 白名单只投影 <code>name</code>/<code>description</code>/<code>parameters</code>。</p>
+<h2>第二不变量：Guard 单调</h2>
+<blockquote><p>没有任何机制能把一个被拒绝的调用翻回放行。</p></blockquote>
+<pre><code class="language-ts">/** A monotonic execution guard evaluated after every tools/pre-execute listener and before the tool body. */
+type ToolGuard = (execution: Readonly&lt;ToolExecution&gt;) =&gt; string | undefined</code></pre>
+<p><code>ToolGuard</code> 的返回类型有意不包含 allow 结果：<code>undefined</code> 保留 waterfall 的决策，返回的 reason 只能缩减权限——因此<strong>监听器顺序永远无法把 deny 变成 allow</strong>。同理，<code>never</code> 审批策略在服务内部、waterfall 分发之前强制执行，后来以 <code>prepend</code> 注册的应答者也无法绕过。</p>
+<h2>第三不变量：注册是可逆副作用</h2>
+<blockquote><p>每个注册都有对应的 disposer；插件卸载时按预期撤销。</p></blockquote>
+<ul><li>提示词片段、工具 schema、适配器、提供方、监听器通过 <code>ctx.effect()</code> / <code>ctx.on()</code> 安装</li><li>注册表 <code>register()</code> 返回精确的 disposer——复合 effect 通过 yield 它来嵌套 teardown 顺序</li><li>作用域世界随 agent 卸载整体回卷：<code>agent.ctx</code> 上的注册&quot;unwind on disposal, reject registration afterward&quot;</li></ul>
+<h2>第四不变量：作用域决定可见性与生命周期</h2>
+<blockquote><p>带作用域的注册既决定可见性，也绑定生命周期——同一事实决定两者。</p></blockquote>
+<ul><li>只有两层：全局与 scope-local；带作用域的注册不向下继承给 subagent</li><li>子树行为通过 lineage 数据表达，从不通过 scope 结构</li><li>被 restriction 过滤掉的全局工具与不存在的工具无法区分（&quot;可见性而非权限&quot;）</li></ul>
+<h2>第五不变量：品牌化 ID 防互换</h2>
+<blockquote><p>在包之间传递的 ID 都经过品牌化——结构上是字符串，但在类型层面不可互换。</p></blockquote>
+<pre><code class="language-ts">/** A string carrying a compile-time-only brand B. */
+type Branded&lt;B extends string&gt; = string &amp; { readonly [BRAND]: B }</code></pre>
+<p><code>SessionId</code>、<code>CallId</code>、<code>JobId</code>、<code>ApprovalRequestId</code>、<code>GoalId</code>、<code>FsTargetKey</code>、<code>FsVersion</code>……不能把 <code>SessionId</code> 传给需要 <code>CallId</code> 的位置——编译期即拒绝。<code>Branded&lt;B&gt;</code> 原语在零依赖的 <code>dsh-brand</code> 包中，任何包都能品牌化自己拥有的 id。</p>
+<h2>第六不变量：闭包以判别标签终结</h2>
+<blockquote><p>对标签做 switch；封闭联合以 assertNever 结尾，可合并扩展联合以文档化 default 放行。</p></blockquote>
+<table><thead><tr><th>联合</th><th>性质</th><th>结尾方式</th></tr></thead><tbody><tr><td><code>StreamChunk</code></td><td>封闭</td><td><code>assertNever</code>（新变体在每个消费方处编译错误）</td></tr><tr><td><code>SessionEvent</code></td><td>可合并扩展</td><td><code>default</code> 放行未知插件事件</td></tr><tr><td><code>TurnEndReasonMap</code></td><td>可合并扩展</td><td><code>default</code> 放行</td></tr><tr><td><code>PreToolDecision</code> / <code>PostToolDecision</code></td><td>封闭</td><td>穷举</td></tr></tbody></table>
+<h2>第七不变量：错配置失败要响</h2>
+<blockquote><p>错配置在加载时失败要响；永远不要静默跳过缺失的引用。</p></blockquote>
+<ul><li>计划模式 <code>section</code> 缺失/空白/非字符串 → 插件加载失败</li><li>权限预设要求隔离的 shell 执行器 + approval 服务 → 配置错误加载即失败</li><li>重复的工具/提示词段注册 → 抛异常</li><li>未知的事件类型无 <code>ignorable: true</code> → 读取方拒绝重建会话，而非静默丢弃</li></ul>
+<h2>不变量如何被校验</h2>
+<table><thead><tr><th>机制</th><th>校验内容</th></tr></thead><tbody><tr><td><code>dsh-session/invariant</code> 插件</td><td>轮次与步骤编号、执行事件封闭、工具调用/结果配对</td></tr><tr><td><code>dsh-tool-workflow/invariant</code></td><td>工作流 run 协议（一 start、成员 end 配对、结束后不更新）</td></tr><tr><td>运行时不变量配套（AGENTS.md）</td><td>检查权威事件流或可变数据，而非服务/方法存在性</td></tr><tr><td>文档门禁</td><td><code>verify-cordis-catalog</code>、<code>verify-tool-catalog</code>、<code>verify-type-equiv</code>（粘贴的类型声明不得漂移）</td></tr></tbody></table>
+<h2>设计取舍</h2>
+<p>这些不变量不是&quot;好习惯&quot;——它们是<strong>可机械校验的契约</strong>，因此：</p>
+<ul><li>错误的实现被编译期拒绝（品牌化 ID、封闭联合的 assertNever），而不是运行时才发现</li><li>错误的配置被加载期拒绝（fail loud），而不是默默降级</li><li>错误的监听器被单调性拒绝（guard），而不是被覆盖</li></ul>
+<p>这正是&quot;没有需要打补丁的特权内核&quot;的底气：扩展点有契约，契约有门禁，门禁有测试。</p>
+      <div class="pagenav"><a class="card prev" href="layout.html"><div class="label">上一页</div><div class="title">仓库布局：包的地图</div></a><a class="card next" href="telemetry-identity.html"><div class="label">下一页</div><div class="title">身份与遥测：匿名与审计</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

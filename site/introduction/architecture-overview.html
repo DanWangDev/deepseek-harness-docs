@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>架构全景：插件化分层详解 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item active" href="architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 介绍 / 架构全景：插件化分层详解</div>
+      <h1>架构全景：插件化分层详解</h1>
+<blockquote><p>从组合层到基础设施层，详解 DeepSeek Harness 的插件化架构设计。基于 <code>packages/</code> 的源码级数据流分析——运行中的 dsh 是一棵插件树，由启动时按序叠加的各层组合而成。</p></blockquote>
+<h2>一个核心事实：一切皆插件</h2>
+<p>DeepSeek Harness 建立在 <a href="../core/cordis.html">Cordis</a> 之上：插件向共享上下文贡献服务、类型化事件和可逆的副作用。<strong>产品的每一部分都是插件</strong>，包括模型适配器、工具注册表、会话日志，以及 agent loop 本身。因此每一部分都可以从配置替换——不存在需要打补丁的特权内核。</p>
+<h2>组合层：Profile 与组合包</h2>
+<p>运行中的 <code>dsh</code> 是一棵插件树，由启动时按序叠加的各层组合而成：</p>
+<pre><code class="language-text">空条目列表
+  ├── profile 列出的每个组合包（按顺序）
+  ├── profile 的 cordis.patch.yml
+  ├── home 级的 cordis.patch.yml
+  └── 任意 --patch overlay（优先级最高）</code></pre>
+<ul><li><strong>profile</strong>：存放在 Harness home 中的具名组装。它列出自己叠放的组合包，存放自己安装的树外插件，并保存用户自己的 <code>cordis.patch.yml</code>。<code>web</code> 和 <code>headless</code> 作为模板随发行版交付。</li><li><strong>组合包（bundle）</strong>：Cordis 配置项及其挂载代码的分发格式——它插入的内容始终可被其上各层 patch。一条 patch 按 id 定位某个条目并替换其整个 config，或插入新条目。</li></ul>
+<table><thead><tr><th>组合包</th><th>内容</th></tr></thead><tbody><tr><td><code>dsh-base</code></td><td>每个 profile 的第一层：模型适配器、工具、持久化、沙箱与审批策略、设置、凭据、遥测</td></tr><tr><td><code>dsh-web-app</code></td><td>浏览器应用（Web UI）</td></tr><tr><td><code>dsh-headless</code></td><td>一次性运行器，完全不带服务器</td></tr></tbody></table>
+<p>要查看你的机器实际启动的配置树：</p>
+<pre><code class="language-sh">dsh --profile web --dump-config</code></pre>
+<p>它打印出的任何条目，都可以由你自己的 patch 替换。</p>
+<h2>核心包：六个主干包</h2>
+<p>一个轮次按同一条循环流经六个包，每个包向 Cordis 树贡献一个 <code>ctx.&lt;key&gt;</code> 服务：</p>
+<table><thead><tr><th>包</th><th>职责</th><th><code>ctx</code> 键</th></tr></thead><tbody><tr><td><code>core/session</code></td><td>仅追加的 <code>SessionEvent</code> 日志与内存 store——唯一真源</td><td><code>ctx.sessions</code></td></tr><tr><td><code>core/system-prompt</code></td><td>提示词片段与工具 schema 的组装</td><td><code>ctx.systemPrompt</code></td></tr><tr><td><code>core/tools</code></td><td>作用域化的工具注册表和带把关的执行流水线</td><td><code>ctx.tools</code></td></tr><tr><td><code>core/agent</code></td><td><code>Agent</code> 接口、活跃 agent 注册表和 <code>agent/*</code> 事件</td><td><code>ctx.agents</code></td></tr><tr><td><code>core/agent-loop</code></td><td>实现公开 <code>Agent</code> 约定的默认驱动器</td><td><code>ctx.agentLoop</code></td></tr><tr><td><code>core/scope</code></td><td>按 agent 划分作用域的注册原语</td><td>库，无 ctx 键</td></tr></tbody></table>
+<p><code>agent-loop</code> 是公开 <code>Agent</code> 约定的唯一具体实现，但扩展插件只依赖 <code>agent</code>（包括需要发起 Agent 时），绝不直接依赖 <code>agent-loop</code>——<strong>循环保持可替换</strong>。把这条主干接成可运行 agent 的默认组合是 <code>examples/agent-spine-demo</code>。</p>
+<h2>轮次流程：一条主数据流的源码追踪</h2>
+<p>一个<strong>步骤</strong>是一次模型请求加上它调用的工具。一个<strong>轮次</strong>包含零个或多个步骤：它在领取首条输入之前打开，并在不再欠下任何工作时关闭：</p>
+<pre><code class="language-text">turn/start
+  claim next-step input plus one queued message
+  assemble prompt sections + tool schemas
+  -&gt; agent/pre-step                   reject | enter(messages)
+     reject, or a first enter rewritten empty -&gt; close the turn with no step
+     step/start
+     append entered messages as user/message
+     derive model history from the log
+     agent/request -&gt; llm/stream -&gt; assistant/chunk* -&gt; assistant/message
+     tool/call* -&gt; tools/pre-execute -&gt; tools/execute -&gt; tools/post-execute -&gt; tool/result*
+     step/end
+     tools owe another request, or next-step input arrived -&gt; claim -&gt; next step
+  -&gt; agent/turn-stopping
+turn/end</code></pre>
+<p><code>turn/<em></code>、<code>step/</em></code>、<code>user/message</code>、<code>assistant/<em></code> 和 <code>tool/</em></code> 是<strong>持久会话事件</strong>；其余是分属三个事件域的实时扩展点。<code>agent/pre-step</code>、<code>agent/request</code>、<code>llm/stream</code> 和三个 <code>tools/*</code> 事件是 waterfall（瀑布式事件），其监听器必须调用 <code>next()</code> 才能委托下去；<code>agent/turn-stopping</code> 是 serial 事件，没有 <code>next()</code>。</p>
+<h2>事件：三个事件域</h2>
+<p>事件就是扩展点，而选对事件域是大多数改动的第一个决定：</p>
+<table><thead><tr><th>事件域</th><th>载体</th><th>何时使用</th></tr></thead><tbody><tr><td><strong>会话事件</strong></td><td>追加到日志并通过 <code>session/event</code> 广播的持久事实</td><td>当某个事实必须在重新加载后仍然存在时</td></tr><tr><td><strong>Agent 事件</strong>（<code>agent/*</code>）</td><td>携带活跃 <code>Agent</code>：inbox、步骤、状态、请求、验证、续跑</td><td>观察或拦截进行中的工作时</td></tr><tr><td><strong>能力事件</strong></td><td>无需导入循环即可向某个 seam（<code>fs/<em></code>、<code>tools/</em></code>、<code>telemetry/*</code>）附加策略和适配器</td><td>向能力附加策略时</td></tr></tbody></table>
+<p><strong>模型可见即已记录。</strong> 抵达模型请求的一切都必须能从日志重建，并由一项运行时不变量断言这一点。因此，新增一项模型可见输入就需要新增一个会话事件。</p>
+<h2>能力 seam：可替换能力的三种角色</h2>
+<p>一个 <strong>seam</strong> 是一项可替换能力，包含三种角色：</p>
+<table><thead><tr><th>角色</th><th>职责</th><th>示例（shell）</th></tr></thead><tbody><tr><td><strong>Service Definition</strong></td><td>声明接口（拥有自身 <code>ctx.&lt;key&gt;</code> 的 Cordis <code>Service</code>）</td><td><code>dsh-shell</code></td></tr><tr><td><strong>Service Provider</strong></td><td>实现接口</td><td><code>dsh-bash-local</code> / <code>dsh-bash-sandbox</code></td></tr><tr><td><strong>Consumer</strong></td><td>使用服务（通常是面向模型的工具）</td><td><code>dsh-tool-bash</code></td></tr></tbody></table>
+<p>一个包可以合并承担多个角色（<code>dsh-llm</code> 同时是 Service Definition 和 Consumer），但单一角色本身不是 seam；<strong>添加一项能力意味着把三者一并设计</strong>。</p>
+<p>seam 正是替换一个提供方就能改变整个产品的原因：文件系统与进程提供方共享同一个执行世界，因此把它们指向远程沙箱，也就把 Bash、PTY 和 LSP 一并搬了过去，无需提供方专用 fork。subagent 提供方在同一个接口之后同样千差万别——从新建一个子 agent，到把一个轮次委派给另一个产品。</p>
+<h2>新行为的归属位置</h2>
+<table><thead><tr><th>目标</th><th>机制</th></tr></thead><tbody><tr><td>添加模型提供方</td><td>在 <code>ctx.llm</code> 上注册其适配器</td></tr><tr><td>添加面向模型的能力</td><td>在 <code>ctx.tools</code> 上注册；其 schema 加入提示词组装</td></tr><tr><td>让某个会话拥有不同的能力集合</td><td>组装一个 agent preset；其中的服务行需要 <code>isolate</code> realm</td></tr><tr><td>添加 shell 执行</td><td>注册 <code>ctx.shell</code> 后端；本地后端通过 <code>ctx.subprocess</code> spawn 进程</td></tr><tr><td>添加持久化终端执行</td><td>注册 <code>ctx.terminals</code> 后端和 <code>dsh-tool-terminal</code></td></tr><tr><td>添加用户命令</td><td>在 <code>ctx.commands</code> 上注册；它无需模型轮次即可分派</td></tr><tr><td>添加后台工作</td><td>在 <code>ctx.jobs</code> 上注册；<code>job_*</code> 工具负责收集或停止</td></tr><tr><td>添加文件系统访问或策略</td><td>注册 <code>ctx.fs</code> 提供方，或监听 <code>fs/*</code> 事件</td></tr><tr><td>限制所启动的进程</td><td>使用 <code>ctx.sandbox</code> 后端；消费方在启动进程前包装 argv</td></tr><tr><td>拦截请求、工具或轮次</td><td>使用相应的 <code>agent/<em></code> 或 <code>tools/</em></code> 事件</td></tr><tr><td>添加模型可见上下文</td><td>调用 <code>agent.inject()</code>；它会落到下一次获准的请求中</td></tr><tr><td>添加 UI 或编辑器集成</td><td>驱动 <code>ctx.agents</code> 并从 <code>session/event</code> 渲染</td></tr><tr><td>生成会话标题</td><td>注册唯一的 <code>ctx.sessionTitle</code> 提供方</td></tr><tr><td>fork 活跃会话</td><td><code>ctx.sessions.fork(source, boundary?, childSessionId?)</code></td></tr></tbody></table>
+<h2>四个核心设计原则</h2>
+<h3>插件即边界 (Plugin as Boundary)</h3>
+<p>每个注册都是可逆的副作用：提示词片段、工具 schema、适配器、提供方和监听器通过 <code>ctx.effect()</code> 或 <code>ctx.on()</code> 安装，reload 和 teardown 时按预期撤销。加载顺序通过服务依赖表达（<code>inject</code>），而非手动编排启动序列。</p>
+<h3>事件即扩展点 (Event as Extension Point)</h3>
+<p>拦截和策略优先使用事件（<code>agent/<em></code>、<code>tools/</em></code> 的 waterfall），直接能力调用优先使用服务方法。waterfall 监听器必须调用 <code>next()</code> 才能委托下去；返回而不调用则短路。</p>
+<h3>日志即记忆 (Log as Memory)</h3>
+<p>会话日志是模型所见上下文的来源。<code>deriveMessages()</code> 从中投影出模型历史，原始 <code>assistant/chunk</code> 事件保证回放和 UI 保真。fork、恢复、transcript、遥测和持久化都派生自该事件流。</p>
+<h3>作用域即可见性 (Scope as Visibility)</h3>
+<p>一项贡献（工具、提示词段、变量、限制、监听器）要么是全局的，要么归属于恰好一个 scope key。带作用域的工具在该 scope 内遮蔽同名的全局对应项——这是按 agent 定制 persona 和工具变体的机制。</p>
+      <div class="pagenav"><a class="card prev" href="what-is-deepseek-harness.html"><div class="label">上一页</div><div class="title">什么是 DeepSeek Harness</div></a><a class="card next" href="why-this-whitepaper.html"><div class="label">下一页</div><div class="title">为什么写这份白皮书</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

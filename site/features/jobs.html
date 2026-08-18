@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>后台任务：长时运行管理 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="providers.html">模型提供方：多端点路由</a><a class="item" href="commands.html">人类命令：斜杠平面</a><a class="item active" href="jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 功能与使用 / 后台任务：长时运行管理</div>
+      <h1>后台任务：长时运行管理</h1>
+<blockquote><p>长时间运行的生产方、<code>ctx.jobs</code> 运行时与任务控制工具共用的词汇：bash 后台命令、PTY 发送与 subagent 如何通过同一套 <code>job_*</code> 工具读取、列出和终止。</p></blockquote>
+<h2>为什么需要后台任务</h2>
+<p>agent 常常需要启动&quot;跑很久&quot;的工作：<code>pnpm run test</code>（几分钟）、长构建、后台轮询。如果每个工具调用都阻塞等待完成，agent 会被卡住——而且一旦模型输出被截断或轮次结束，前台工作可能被一起带走。</p>
+<p>后台任务运行时（<code>ctx.jobs</code>）把&quot;长时工作&quot;从工具调用中<strong>解耦</strong>出来：</p>
+<pre><code class="language-text">bash(&quot;pnpm run test&quot;, run_in_background: true)
+  → ctx.jobs.start({ kind: 'bash', label: 'pnpm run test', owner: agent })
+  → 立即返回 JobId（bash-N）
+  → 模型可以继续做别的事
+  → job_output 读取输出 / job_list 列出 / job_kill 终止
+  → 完成通知经 agent.inject() 作为 user/message 送达</code></pre>
+<h2>生产方约定</h2>
+<pre><code class="language-ts">/** Producer declaration passed to JobRegistry.start. */
+interface JobStart {
+  kind: JobKind              // 也是 id 前缀（bash、subagent、…）
+  label: string              // 一行模型可见标签
+  outputLimitBytes?: number  // 每条完整完成通知/输出读取的 UTF-8 字节上限
+  owner?: Agent              // 拥有者 agent；其 dispose 会取消并等待该 job
+  run(): JobHooks            // 预检后调用；抛错则什么都不注册
+}</code></pre>
+<pre><code class="language-ts">/** Hooks through which the runtime controls and observes producer work. */
+interface JobHooks {
+  cancel(reason?: string): void        // 同步、幂等、最终结算 done
+  done: Promise&lt;JobOutcome&gt;            // 生产方释放资源后 resolve（不是工作完成时）
+  readOutput?(): string                // 消费上一次调用以来的输出
+}</code></pre>
+<p>访问控制依赖<strong>拥有者授权</strong>（<code>ownerSession</code> 携带共享 <code>SessionId</code>），而非 id 的保密性。</p>
+<h2>状态与快照</h2>
+<pre><code class="language-ts">type JobStatus = 'running' | 'stopping' | 'completed' | 'killed' | 'failed'</code></pre>
+<p><code>JobSnapshot</code> 是每次新建的<strong>只读投影</strong>（新对象，绝非实时注册表状态）。<code>JobOutcome.status</code> 是生产方报告的三态终局：<code>completed</code>（完成）、<code>killed</code>（取消）、<code>failed</code>（失败），附 kind 专属的 <code>detail</code>（如 <code>'exit code: 3'</code>、<code>'max-tokens'</code>）。</p>
+<h2>工具三件套</h2>
+<table><thead><tr><th>工具</th><th>行为</th></tr></thead><tbody><tr><td><code>job_list</code></td><td>列出任务（kind、label、状态快照）</td></tr><tr><td><code>job_output</code></td><td>读取自上次读取以来的输出（流式任务）；等待任务时阻塞</td></tr><tr><td><code>job_kill</code></td><td>请求取消（同步、幂等，最终结算）</td></tr></tbody></table>
+<p><code>dsh-tool-jobs</code> 与任务种类无关：<strong>bash 后台命令、PTY 发送和 subagent 都通过相同的 3 个工具读取、列出和终止</strong>。加载该插件会挂接控制器，从而启用生产方的 <code>ctx.jobs.start()</code>。</p>
+<h2>完成通知</h2>
+<p>完成监听器把 <code>JobOutcome</code> 渲染为模型可见的完成通知（经 <code>agent.inject()</code> 作为 user/message 注入）：</p>
+<ul><li><code>outputLimitBytes</code> 是每个完整通知的字节上限——<code>'exit code: 3'</code> 这样的状态行不会吞掉输出预算</li><li><code>reported</code> 字段抑制完成通知：另一个接口已经交付终止状态或承诺交付时（如 subagent 结果的自动投递），不会重复通知</li><li>排空 owner 或服务的 teardown 取消同样计入</li></ul>
+<h2>与工具族的联动</h2>
+<table><thead><tr><th>生产方</th><th>通过</th><th>后台化</th></tr></thead><tbody><tr><td>bash/pwsh 工具</td><td><code>run_in_background: true</code> 参数</td><td>注册 <code>ctx.jobs</code>；<code>enableRunInBackground</code> 可移除该参数</td></tr><tr><td>terminal_send</td><td><code>run_in_background: true</code></td><td>注册 <code>ctx.jobs</code></td></tr><tr><td>subagent</td><td>后台模式（<code>continuable</code> 默认）</td><td>经 <code>ctx.subagents</code> 的 activation 管理，结果经 <code>subagent</code> 工具自动投递</td></tr></tbody></table>
+<h2>示例流程</h2>
+<pre><code class="language-text">模型: bash(&quot;pnpm run test&quot;, run_in_background: true)
+  → tool/result: { jobId: &quot;bash-3&quot; }
+模型: todo_write([...])   ← 继续做别的事
+  ← user/message: &quot;Background job bash-3 completed: exit code 0&quot;
+模型: job_output({ job_id: &quot;bash-3&quot; })  → 完整输出</code></pre>
+      <div class="pagenav"><a class="card prev" href="commands.html"><div class="label">上一页</div><div class="title">人类命令：斜杠平面</div></a><a class="card next" href="../internals/layout.html"><div class="label">下一页</div><div class="title">仓库布局：包的地图</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

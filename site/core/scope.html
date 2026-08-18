@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Agent 作用域：可见性即生命周期 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="system-prompt.html">System Prompt 动态组装</a><a class="item active" href="scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 核心机制 / Agent 作用域：可见性即生命周期</div>
+      <h1>Agent 作用域：可见性即生命周期</h1>
+<blockquote><p>一个贡献（工具、提示词段、变量、限制、监听器）要么是<em>全局的</em>，要么归属于恰好一个 scope key。带作用域的注册既决定可见性，也绑定生命周期——同一事实决定两者。</p></blockquote>
+<h2>为什么需要作用域</h2>
+<p>一个 harness 进程里通常有多个 agent：主 agent、委派出的子 agent、后台可继续 agent。它们共享同一个 <code>ctx</code> 世界，但<strong>不应该看到同样的东西</strong>：</p>
+<ul><li>子 agent 不该看到父 agent 的私有工具</li><li>一个 agent 的 persona 不该污染另一个</li><li>一个 agent 的生命周期结束，它的注册必须随之撤销</li></ul>
+<p>DeepSeek Harness 用两层扁平结构解决这个问题：<code>scope/</code> 库提供身份、载体与作用域层词汇，使同一注册上下文同时表达每个 agent 的可见性和共享生命周期所有权。</p>
+<h2>核心原语</h2>
+<pre><code class="language-ts">/** An opaque, identity-compared scope key. */
+type ScopeKey = object</code></pre>
+<p><code>ScopeKey</code> 是不透明的对象身份标识——已交付的 agent loop 使用活跃的 <code>Agent</code> 对象作为自身的 key，但该原语从不检视该对象。</p>
+<p><strong>只有两层，采用扁平结构</strong>：带作用域的注册不会向下继承给 subagent；子树行为通过 lineage（<code>parentSession</code>、<code>delegationDepth</code>、<code>subagentDepth</code>）数据表达，从不通过 scope 结构。</p>
+<pre><code class="language-ts">/** A minted registration scope and its quiescent disposal boundaries. */
+interface Scope {
+  /** Context through which scope-owned registrations are made. */
+  ctx: Context
+  /** Exact Cordis disposer, used when nesting this scope in an ordered composite effect. */
+  rawDispose: () =&gt; Promise&lt;void&gt; | void
+  /** Dispose every scope-owned registration; racing calls await the same completion. */
+  dispose(): Promise&lt;void&gt;
+}</code></pre>
+<h2>Scoped Dispatch：事件按 subject 路由</h2>
+<p><code>Scoped&lt;T&gt;</code> 是编译期品牌标记，标注在 <code>scopeTarget(base, key)</code> 返回的不透明路由接收器上：</p>
+<pre><code class="language-ts">/** A routing-only event receiver built by scopeTarget. */
+type Scoped&lt;T extends object&gt; = object &amp; { readonly [ScopedBrand]: T }</code></pre>
+<p>作用域过滤的事件声明以此载体作为 <code>this</code> 类型，真正的事件主体仍作为显式参数传入。<strong>分发规则</strong>：</p>
+<ul><li>关于某个 agent 的活动的事件，以该 agent 的 carrier 分发——agent-scoped 监听器只收到那个 agent 的事件</li><li>关于注册表本身的事件（如&quot;一个工具被添加了&quot;）属于注册表主体事件，保持不过滤</li></ul>
+<p>例如 <code>agent/pre-step</code> 的声明是 <code>'agent/pre-step'(this: Scoped&lt;Agent&gt;, payload: {...}, next)</code>——只有该 agent 作用域内的监听器参与它的 pre-step 决策。</p>
+<h2>Shadowing：最具体者胜出</h2>
+<p>带作用域的工具、片段、变量仅在该 scope 内<strong>替换同名的全局对应项</strong>：</p>
+<pre><code class="language-text">全局工具 register(&quot;bash&quot;, …)
+agent A scope: register(&quot;bash&quot;, …)   ← A 看到自己的 bash
+agent B scope: （无注册）             ← B 看到全局 bash</code></pre>
+<p>这是按 agent 定制 persona 和工具变体的机制。工具注册表读取时将全局层与观察 scope 的链合并：最近层的条目直接赢得重名工具。</p>
+<h2>Restriction 与 scope-local 注册</h2>
+<pre><code class="language-ts">/** Per-scope filter over global tools. Restrictions intersect and do not affect scoped registrations. */
+interface ToolRestriction {
+  /** Global tool names that stay visible; everything else is removed. */
+  readonly allow?: readonly string[]
+  /** Global tool names removed from visibility. */
+  readonly deny?: readonly string[]
+}</code></pre>
+<p><code>tools.restrict(filter)</code> 为单个 scope 过滤<strong>全局</strong>工具集合（多个 restriction 取交集组合）；scope-local 注册在过滤之后合并。被过滤掉的全局工具<strong>既不出现在提示词中，也拒绝执行</strong>——与不存在的工具无法区分（&quot;可见性而非权限&quot;）。仅 deny 的过滤器允许后续未列出的继承工具通过，而 allow 列表则排除它们——因此被委派的子 agent 会保留其回报所依赖的工具。</p>
+<h2>Agent 上下文：<code>agent.ctx</code></h2>
+<p>agent 的带作用域上下文。通过它进行的注册具有 scope 可见性，其生命周期也绑定到该 scope（同一事实决定两者）。<code>Agent</code> 句柄暴露：</p>
+<pre><code class="language-ts">/** Agent-scoped context; its contributions are agent-local, unwind on disposal, and reject registration afterward. */
+readonly ctx: Context</code></pre>
+<h2>Setup Window：组装作用域世界</h2>
+<p>创建者组装 agent 作用域环境的创建时隙（<code>CreateAgentOptions.setup</code>）：</p>
+<ul><li>此时 scope 和 agent 对象已存在，但 agent 或会话尚未发布</li><li><code>agent/session-start</code> 尚未触发，首次提示词尚未组装</li><li><strong>setup 只做注册，从不驱动 agent</strong>——setup 拒绝、commit 抛出或所有者 dispose 都会回滚事务，两个 id 均不发布</li></ul>
+<p>子 agent 的创建窗口正是通过 <code>composeFrom(agentCtx, parentCtx)</code> 绑定父 preset 组合的地方（见<a href="../agent/preset.html">Agent Preset</a>）。</p>
+<h2>Lineage：数据，而非结构</h2>
+<p>父子关系以数据形式携带：<code>parentSession</code>（持久）、<code>delegationDepth</code>（持久的子 agent 递归预算）、<code>subagentDepth</code>（运行时）。<strong>Lineage 从不影响可见性</strong>——它服务于授权（如 subagent 后续操作要求持久化的直接父级）、预算与审计，而不是 scope 解析。</p>
+<h2>术语速查</h2>
+<table><thead><tr><th>术语</th><th>含义</th></tr></thead><tbody><tr><td>scope</td><td>按 agent 划分的注册单位；只有全局与 scope-local 两层</td></tr><tr><td>scope key</td><td>不透明标识，按对象同一性比较；活跃 agent 就是其自身 scope 的 key</td></tr><tr><td>scope carrier</td><td>scope 过滤分发所携带的 <code>thisArg</code></td></tr><tr><td>shadowing</td><td>最具体者胜出的名称解析</td></tr><tr><td>restriction</td><td>为单个 scope 过滤全局工具集合</td></tr><tr><td>setup window</td><td>创建者组装 agent 作用域环境的创建时隙</td></tr><tr><td>lineage</td><td>以数据形式携带的父子关系事实</td></tr></tbody></table>
+      <div class="pagenav"><a class="card prev" href="system-prompt.html"><div class="label">上一页</div><div class="title">System Prompt 动态组装</div></a><a class="card next" href="../tools/what-are-tools.html"><div class="label">下一页</div><div class="title">工具系统设计：AI 的双手</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

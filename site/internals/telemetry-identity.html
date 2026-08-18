@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>身份与遥测：匿名与审计 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="layout.html">仓库布局：包的地图</a><a class="item" href="invariants.html">运行时不变式：架构的自证</a><a class="item active" href="telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 内部机制 / 身份与遥测：匿名与审计</div>
+      <h1>身份与遥测：匿名与审计</h1>
+<blockquote><p>DeepSeek Harness 的匿名身份与遥测机制：每 harness home 一个的随机 UUID、ledger/ops 双通道遥测、共享披露状态——以及&quot;哪些数据会离开你的机器&quot;的完整答案。</p></blockquote>
+<h2>匿名身份</h2>
+<p><code>@deepseek-ai/dsh-anonymous-user-id</code>（<code>packages/identity/anonymous-user-id</code>）是一个<strong>共享库，不是 Cordis 插件</strong>：</p>
+<pre><code class="language-ts">getOrCreateAnonymousUserId()  // 返回随机 UUID v4，每 harness home 一个</code></pre>
+<ul><li>持久为 <code>$DSH_HOME/.anonymous-user-id</code> 单行（默认 <code>~/.dsh/</code>）</li><li><strong>绝不从 hostname、网络或 git 派生</strong>——它就是一枚随机 UUID</li><li>删除文件即重置；不同 home 不可关联</li><li>首次写入用独占创建，并发输者采纳持久者</li></ul>
+<p>它的消费方：</p>
+<table><thead><tr><th>消费方</th><th>用途</th></tr></thead><tbody><tr><td>OTel 遥测后端</td><td>作为 Resource <code>user.id</code> 上报</td></tr><tr><td><code>/feedback</code> 确认</td><td>确认文本含同值</td></tr><tr><td><code>dsh-llm-deepseek</code></td><td>发 <code>x-deepseek-harness-user-id</code> 头</td></tr></tbody></table>
+<h2>遥测 seam</h2>
+<p>遥测是<strong>可选能力</strong>：Service Definition + 捕获协调器 <code>ctx.sessionTelemetry</code>（<code>packages/session/session-telemetry</code>）；部署方加载 Provider <code>dsh-session-telemetry-otel</code>（原样配置的 OpenTelemetry JS SDK 日志流水线）。harness 职责止于 <code>emit()</code>——批处理、重试、排队归上报 SDK。</p>
+<p><strong>内容不进入模型请求</strong>——遥测只观察，不参与对话。</p>
+<h3>记录形状</h3>
+<pre><code class="language-ts">SessionTelemetryRecord {
+  channel: 'ledger' | 'ops'
+  time: number
+  severity: 'info' | 'warn' | 'error'
+  attributes: Record&lt;string, unknown&gt;
+  body?: unknown
+}</code></pre>
+<table><thead><tr><th>通道</th><th>内容</th></tr></thead><tbody><tr><td><code>ledger</code></td><td><strong>一对一镜像</strong> session-log 事件：attributes 只带 <code>session.id</code>/<code>event.type</code>/<code>event.seq</code>（及 header 有的 <code>session.cwd</code>/<code>parent_id</code>/<code>seed_length</code>）</td></tr><tr><td><code>ops</code></td><td>运维事件：<code>agent-error</code>、<code>shutdown</code>（刻意无 <code>event.seq</code>，不被误认 ledger 行）</td></tr></tbody></table>
+<p>细节纪律：</p>
+<ul><li>每个 <code>(turn, step)</code> 只发第一条 <code>assistant/chunk</code>（流已开始信号），其余分片丢弃——传输中 <code>seq</code> 缺口是常态</li><li>ledger 按 <code>(session.id, event.seq)</code> 去重，ops 容忍重复</li><li>投递尽力而为；脱敏 waterfall 是 <code>session-telemetry/record</code></li></ul>
+<h3>共享披露</h3>
+<pre><code class="language-ts">type SessionTelemetrySharingStatus = 'full' | 'feedback-only' | 'disabled'</code></pre>
+<p>经 <code>ctx.sessionTelemetry.sharing</code> 必需成员披露：</p>
+<table><thead><tr><th>状态</th><th>含义</th></tr></thead><tbody><tr><td><code>full</code></td><td>遥测导出开启</td></tr><tr><td><code>feedback-only</code></td><td>仅 feedback 直接确认（不经遥测管道）</td></tr><tr><td><code>disabled</code></td><td>完全关闭</td></tr></tbody></table>
+<p><code>DSH_TELEMETRY_DISABLED</code> 只停 telemetry 导出——<strong>不影响</strong> feedback 直接确认与 DeepSeek provider 头（那枚 <code>x-deepseek-harness-user-id</code> 是身份，不是遥测）。</p>
+<h2>反馈（Feedback）</h2>
+<p><code>@deepseek-ai/dsh-message-feedback</code> 是单条 assistant 消息的可编辑反馈——<strong>本地 storage-domain sidecar</strong>，刻意与不可变 Session 级 <code>feedback/record</code> 事件分离（非日志内容/投影、不做遥测交接）：</p>
+<pre><code class="language-ts">type MessageFeedbackRating = 'positive' | 'negative'
+MessageFeedbackItem { messageId, rating, note?, version, createdAt, updatedAt }</code></pre>
+<p><code>version</code> 是 CAS token——并发编辑以版本冲突拒绝。</p>
+<h2>审计全景</h2>
+<p>身份与遥测回答两个问题：<strong>&quot;你是谁&quot;</strong>（匿名 UUID，不可反向关联）与 <strong>&quot;发生了什么&quot;</strong>（ledger 镜像 + 会话日志）。结合会话日志的审计事件对（<code>approval/asked</code> + <code>approval/decided</code>、<code>hook/invoked</code> + <code>hook/result</code>），系统对外部观察者呈现的是：</p>
+<pre><code class="language-text">可回放的会话日志（模型可见即已记录）
+  + 匿名身份（无法关联真实用户）
+  + 可禁用的遥测（默认状态可披露）
+  + 本地 feedback sidecar（不上报）</code></pre>
+<p>这就是&quot;源码可审计&quot;的完整含义——与那些内置遥测、无法关闭的 agent 产品形成对照。</p>
+      <div class="pagenav"><a class="card prev" href="invariants.html"><div class="label">上一页</div><div class="title">运行时不变式：架构的自证</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

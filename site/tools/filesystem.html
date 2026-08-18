@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>文件系统工具：原子读写编辑 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="what-are-tools.html">工具系统设计：AI 的双手</a><a class="item active" href="filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="task-management.html">任务管理：todo_write 快照</a><a class="item" href="web.html">Web 访问：搜索与抓取</a><a class="item" href="subagent.html">子 Agent：委派与编排</a><a class="item" href="workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 工具系统 / 文件系统工具：原子读写编辑</div>
+      <h1>文件系统工具：原子读写编辑</h1>
+<blockquote><p>分析 DeepSeek Harness 文件系统能力（<code>packages/fs</code>）：<code>read</code>/<code>write</code>/<code>edit</code>/<code>read_image</code> 工具如何通过 <code>ctx.fs</code> seam 与观察策略协作，实现&quot;先读后写/编辑&quot;的安全默认与原子操作。</p></blockquote>
+<h2>能力拆解</h2>
+<p>可选的文件系统能力由四个部分组成：</p>
+<table><thead><tr><th>包</th><th>职责</th></tr></thead><tbody><tr><td><code>dsh-fs</code></td><td><code>ctx.fs</code> + 带可选守卫的原子文本操作（Service Definition）</td></tr><tr><td><code>dsh-fs-local</code></td><td>本地磁盘后端（Service Provider）</td></tr><tr><td><code>dsh-fs-observation-policy</code></td><td>记录观测到的存在/缺失状态，通过 <code>fs/*</code> 事件添加新鲜度规则</td></tr><tr><td><code>dsh-tool-fs</code></td><td>面向模型的 <code>read</code>/<code>write</code>/<code>edit</code>/<code>read_image</code> 工具（Consumer）</td></tr></tbody></table>
+<p><strong>替换后端不会改变策略或工具 schema</strong>——这正是能力 seam 的意义。</p>
+<h2>先读后写：观察策略</h2>
+<p>没有 <code>dsh-fs-observation-policy</code> 时，文件系统 seam 是完整且不受约束的：<code>write</code> 无条件创建或覆盖，<code>edit</code> 无条件替换字面文本。加载了 <code>dsh-tool-fs</code> 的部署<strong>按预期也应加载观察策略插件</strong>，使默认行为为&quot;先读后写/编辑&quot;：</p>
+<pre><code class="language-text">模型: edit(&quot;src/foo.ts&quot;, old, new)
+  → tools/pre-execute … allow
+  → dsh-tool-fs 调用 ctx.fs.editText(target, old, new, expected?)
+    → fs/edit-intent 事件（waterfall）
+      → 观察策略：目标必须已被观测（读/写/列目录）→ 否则 deny（FS_NOT_OBSERVED）
+      → 版本守卫：expected 版本必须匹配当前 → 否则 FS_STALE_VERSION
+  → 原子替换或拒绝</code></pre>
+<p>它裁决 <code>fs/*</code> waterfall 来改变操作——移除该插件不会破坏工具，因为工具调用 <code>ctx.fs</code> 并分发事件，而不调用策略方法。</p>
+<h2>目标标识：不透明的 FsTarget</h2>
+<p>每个操作首先把用户提供的路径解析为不透明的后端目标：</p>
+<pre><code class="language-ts">/** A path resolved by a backend into a stable identity. */
+interface FsTarget {
+  /** Opaque key for stale guards and target lookup. */
+  targetKey: FsTargetKey
+  /** Path for model/UI-facing output. May be a local absolute path, workspace-relative path, or remote URI. */
+  displayPath: string
+}</code></pre>
+<p>消费方可以显示 <code>displayPath</code>，但<strong>禁止解析 <code>targetKey</code></strong>，也不得假设它是本地绝对路径。与文件系统共享执行世界的消费方通过提供方获取跨能力坐标：<code>processPath(target)</code> 返回子进程可以打开的规范化绝对路径，<code>fileUrl(target)</code> 返回 <code>file:</code> URI，<code>contains(parent, child)</code> 检查规范化身份相等或后代包含。</p>
+<h2>写入与编辑守卫</h2>
+<p><code>writeText</code> 和 <code>editText</code> 的版本守卫都是可选的——省略守卫时执行无条件的裸提供方变更：</p>
+<table><thead><tr><th>守卫</th><th>语义</th></tr></thead><tbody><tr><td><code>createIfAbsent</code></td><td>目标缺失时创建；已存在时以 <code>FS_NOT_OBSERVED</code> 拒绝。即使目标在提供方初始探测后才出现也必须拒绝——发布操作本身不得替换</td></tr><tr><td><code>replaceIfVersion</code></td><td>仅在目标存在且版本匹配时替换，否则报 <code>FS_STALE_VERSION</code></td></tr><tr><td>（省略 <code>expected</code>）</td><td>无条件创建或覆盖</td></tr></tbody></table>
+<p>版本 token（<code>FsVersion</code>）由后端从高分辨率 stat 身份与新鲜度字段派生；策略层存储它用于陈旧检查，消费方<strong>不解释其内容</strong>。<code>lstat</code> 是路径级、不跟随链接的元数据原语——需要检查信任边界的消费方可以拒绝 <code>symlink</code>。</p>
+<h2>读取渲染：窗口化视图</h2>
+<p><code>read</code> 工具渲染<strong>窗口化</strong>的代码视图：<code>offset</code> 是窗口请求的 1-based 起始行，<code>lines</code> 是窗口内容，<code>totalLines</code> 报告文件总行数——即使窗口为空也保留 <code>offset</code>，使 UI 永不把部分结果当作完整结果。<code>lang</code> 是从扩展名推得的语言提示，<code>content</code> 是无读取能力 UI 的回退文本。</p>
+<p><code>stat</code> 返回元数据（从不返回内容）；<code>type</code> 让消费方在读取前拒绝目录和特殊文件；<code>size</code> 让文本消费方无需通过失败探测即可选择 <code>readText</code> 还是 <code>streamText</code>。原始字节消费方调用 <code>readBytes(target, signal, maxBytes)</code>——必填的完整内容上限使超限以 <code>FS_TOO_LARGE</code> 失败，不会截断结果或无界缓冲。</p>
+<h2>工具 schema 要点</h2>
+<table><thead><tr><th>工具</th><th>行为</th></tr></thead><tbody><tr><td><code>read</code></td><td>按窗口读取文本文件，渲染带行号的代码视图</td></tr><tr><td><code>write</code></td><td>创建或覆盖文件；受观察策略与版本守卫约束</td></tr><tr><td><code>edit</code></td><td>唯一字面量替换；受同样的守卫约束</td></tr><tr><td><code>read_image</code></td><td>读取图片并创建持久附件；需要 <code>ctx.attachments</code> 与支持图片输入的模型路由，否则拒绝</td></tr></tbody></table>
+<p><code>edit</code> 是&quot;唯一字面量替换&quot;——替换文本必须在目标中唯一出现，从根上避免歧义覆盖。这就是模型侧&quot;改代码&quot;的原子原语：失败即报错，成功即一次干净替换，两者都作为 <code>tool/result</code> 落盘。</p>
+<h2>与命令工具的边界</h2>
+<p><code>str_replace_editor</code>（来自 <code>dsh-tool-str-replace-editor</code>）是基于同一文件系统 seam 的独立查看/创建/替换/按行插入工具，可与任何 shell 或终端接口组合——它不经过 bash，也就没有 shell 注入面。设计取舍：文件编辑走专用工具而非 shell 命令，因为专用工具提供守卫、原子性与可审计的 <code>tool/call</code>/<code>tool/result</code> 事件。</p>
+      <div class="pagenav"><a class="card prev" href="what-are-tools.html"><div class="label">上一页</div><div class="title">工具系统设计：AI 的双手</div></a><a class="card next" href="shell-execution.html"><div class="label">下一页</div><div class="title">命令执行：Bash 与 PowerShell</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

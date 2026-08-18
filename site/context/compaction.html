@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>上下文压缩：记忆的整理术 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item active" href="compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 上下文工程 / 上下文压缩：记忆的整理术</div>
+      <h1>上下文压缩：记忆的整理术</h1>
+<blockquote><p>深度解析 DeepSeek Harness 的上下文压缩（compaction）：<code>compaction/*</code> 会话事件如何加锁、摘要生成如何替换 surface 范围、压力压缩与手动压缩的区别，以及工具结果剪枝如何腾出空间。</p></blockquote>
+<h2>为什么需要压缩</h2>
+<p>上下文窗口是有限的。一个长会话的日志不断增长，最终会超出模型的 context window。压缩（compaction）把一段历史<strong>折叠为摘要</strong>：日志不删（仅追加），但派生历史中的旧节点被一个摘要节点<strong>替换</strong>（surface <code>replace</code>）。</p>
+<p>压缩是<strong>一项可选能力</strong>，不属于 agent loop 主干——Service Definition（<code>dsh-compaction</code>，<code>ctx.compaction</code>）、Service Provider（如 <code>dsh-compaction-basic</code> 后端）、Consumer（<code>dsh-command-compact</code> 人类命令）。</p>
+<h2><code>compaction/*</code> 会话事件</h2>
+<p>压缩通过声明合并为 <code>SessionEventMap</code> 扩展三种事件类型，三者都<strong>仅写入日志</strong>——它们记录锁、摘要、选中范围、被遮蔽事件 seq、token 数以及模型调用，<strong>绝不进入 surface</strong>：</p>
+<table><thead><tr><th>事件</th><th>载荷</th><th>作用</th></tr></thead><tbody><tr><td><code>compaction/start</code></td><td><code>{ turn }</code></td><td>获取日志记录的锁；数字标识尚未结束的自动轮次，<code>null</code> 标识独立手动尝试</td></tr><tr><td><code>compaction/summary</code></td><td><code>{ summary, rawOutput?, shadowedRange, shadowedSeqs, shadowedTokenCount, provider, model, maxTokens?, usage? }</code></td><td>安全摘要投影、被遮蔽的 surface 边界对与 seq、估算 token 数、摘要调用的 envelope</td></tr><tr><td><code>compaction/end</code></td><td><code>{ turn, error? }</code></td><td>释放锁（<code>error</code> 记录失败尝试）</td></tr></tbody></table>
+<p><strong>锁括住整个操作</strong>：先追加 <code>compaction/start</code>，然后执行摘要生成、写入 <code>compaction/summary</code> 与 <code>user/message</code> 替换，最后才追加 <code>compaction/end</code>。最后释放锁意味着操作中途崩溃会表现为可检测的遗留锁（有 start 而无匹配的 end），而非虚假声称完成的 end。</p>
+<p>摘要本身承载在另一条带 <code>surfaceOp: { op: 'replace', start, end }</code> 的 <code>user/message</code> 上——<strong>这是摘要压缩执行的唯一 surface 变更</strong>：</p>
+<pre><code class="language-text">日志（仅追加，永不删除）
+  … user/message(seq 40) … tool/result(seq 55) …
+  compaction/start (seq 60, turn=7)
+  compaction/summary (seq 61)
+  user/message: 摘要 (seq 62, surfaceOp replace 40..55)
+  compaction/end (seq 63, turn=7)
+
+派生历史（surface）
+  … [摘要替换了 40..55 的全部节点] …</code></pre>
+<h2>触发方式</h2>
+<table><thead><tr><th>触发</th><th>API</th><th>语义</th></tr></thead><tbody><tr><td>自动压力</td><td><code>compactIfNeeded(agent, trigger, signal)</code></td><td><code>trigger</code> 为 <code>'pressure'</code>（压力策略）或 <code>'context-overflow'</code>（规范化溢出，可低于普通阈值强制有界缩减）</td></tr><tr><td>手动</td><td><code>compactNow(agent, signal)</code></td><td>作为轮次之间的 agent maintenance 运行；没有有效范围时返回 <code>null</code> 且不写入</td></tr><tr><td>区域</td><td><code>compactRegion(...)</code></td><td>针对显式、两端均包含的 surface 范围</td></tr></tbody></table>
+<p>压力压缩在串行 <code>agent/pre-step</code> 中运行，先于请求推导。失败请求的恢复通过 <code>agent/request-error</code> 运行：仅当 surface replacement generation 前进时才返回重试动作。</p>
+<h2>手动压缩的失败分类</h2>
+<pre><code class="language-ts">/** Expected failure classes for an explicit idle-session compaction request. */
+type ManualCompactionErrorCode =
+  | 'busy' | 'cancelled' | 'changed' | 'summary' | 'commit' | 'persistence'</code></pre>
+<p><code>changed</code> 和 <code>summary</code> 保持会话 surface 不变，但仍闭合失败尝试并持久化到日志。<code>commit</code> 可能发生在部分变更之后；<code>persistence</code> 表示内存中的标记对已闭合但 flush 失败。</p>
+<h2>工具结果剪枝</h2>
+<p>可选的工具结果剪枝服务（<code>dsh-compaction-tool-result-pruner</code>）在压力压缩选择范围前运行：把大体积的 <code>tool/result</code> 内容替换为精简版，报告每次持久内容替换与 Unicode code point 的总减少量：</p>
+<pre><code class="language-ts">/** Aggregate outcome of one stable-surface pruning pass. */
+interface PruneResult {
+  readonly pruned: readonly PrunedEntry[]   // 每个条目：originalSeq → replacementSeq + 字符统计
+  readonly charsRemoved: number
+}</code></pre>
+<p>剪枝后再通过 <code>ctx.tokenMeter</code> 重新测量，并且<strong>可以在不生成摘要的情况下推进 surface</strong>。</p>
+<h2>区域边界：工具配对</h2>
+<p>区域边界<strong>保持工具调用/结果配对，但不保持整个轮次</strong>——因此一个过大轮次中较早关闭的步骤可以被压缩。<code>toolPairingBalancedBefore(session, seq)</code> 与 <code>toolPairingBalancedAfter(session, seq)</code> 检查 seq 之前/之后的配对；它们验证当前 surface 成员关系，拒绝缺失的 seq 与遗留结果。</p>
+<h2>与 token 预算的关系</h2>
+<p>压缩释放的空间由<a href="token-budget.html">Token 预算与请求头</a>中的 <code>ctx.tokenMeter</code> 度量：估算与回放由单例 token meter 直接拥有，而 <code>dsh-compaction-basic</code> 拥有保留策略、事件排序、按路由执行的摘要调用及其配置——<strong>该 seam 不拥有计价 API</strong>。</p>
+      <div class="pagenav"><a class="card prev" href="../tools/workflow.html"><div class="label">上一页</div><div class="title">工作流：脚本化多 Agent 编排</div></a><a class="card next" href="token-budget.html"><div class="label">下一页</div><div class="title">Token 预算与请求头</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

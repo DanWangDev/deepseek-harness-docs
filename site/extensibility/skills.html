@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Skills：技能系统 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="plugins.html">插件开发：从注册到生效</a><a class="item" href="hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item active" href="skills.html">Skills：技能系统</a><a class="item" href="sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 可扩展性 / Skills：技能系统</div>
+      <h1>Skills：技能系统</h1>
+<blockquote><p>深入剖析 DeepSeek Harness 的 Skills 系统：从磁盘加载、frontmatter 解析、调用策略（model/user invocable）、发现优先级到面向模型的 <code>skill</code> 工具——一条完整的技能生命周期链路。</p></blockquote>
+<h2>什么是 Skill</h2>
+<p>Skill（技能）是一份<strong>可复用的任务指令</strong>：<code>&lt;name&gt;/SKILL.md</code> 或 <code>&lt;name&gt;.md</code>。skill 是可选的指令而非会话事件——因此其词汇定义在 <code>packages/skill</code> 而不是 core。模型通过 <code>skill</code> 工具按需加载正文，正文内容经 <code>agent.inject()</code> 作为 user/message 注入下一次请求。</p>
+<h2>能力拆解</h2>
+<table><thead><tr><th>角色</th><th>包</th></tr></thead><tbody><tr><td>Service Definition</td><td><code>dsh-skill</code>（<code>ctx.skills</code> 注册表）</td></tr><tr><td>Service Provider</td><td><code>dsh-skill-filesystem</code>（本地目录提供方）、<code>dsh-skill-badge</code>（可选随包徽章提供方）</td></tr><tr><td>Consumer</td><td><code>dsh-tool-skill</code>（面向模型的 <code>skill</code> 工具）</td></tr></tbody></table>
+<h2>提供方注册表</h2>
+<p><code>ctx.skills</code> 组合本地、内嵌、远程或其他提供方：</p>
+<ul><li>注册是同步的；远程初始化与发现属于 <code>list()</code> 的 await 阶段</li><li>采用<strong>宿主 + 按 scope 的分层结构</strong>：注册落入调用方上下文 scope 对应的层，读取时将全局层与观察 scope 的链合并——最近层的条目直接赢得重名 skill</li><li>发现缓存以解析后的 scope 链为键；提供方和运行时变更发出 <code>skills/change</code> 失效事件（不带 diff，消费方重新 <code>snapshot()</code>）</li></ul>
+<pre><code class="language-ts">/** Provider interface for one source of skills, such as local directories or a remote registry. */
+interface SkillProvider {
+  readonly name: string
+  readonly list: (options: SkillLookupOptions) =&gt; Promise&lt;readonly SkillCandidate[] | SkillProviderObservation&gt;
+  readonly get: (candidate: SkillCandidate, options: SkillLookupOptions) =&gt; Promise&lt;SkillDefinition | undefined&gt;
+}</code></pre>
+<h2>本地发现优先级</h2>
+<p>随附的本地提供方按 rank 顺序扫描各根目录：</p>
+<table><thead><tr><th>Rank</th><th>Source</th><th>Root</th></tr></thead><tbody><tr><td>100</td><td><code>project-dsh</code></td><td><code>&lt;projectRoot&gt;/.dsh/skills</code></td></tr><tr><td>200</td><td><code>project-agents</code></td><td><code>&lt;projectRoot&gt;/.agents/skills</code></td></tr><tr><td>300</td><td><code>custom</code></td><td><code>Config.customSkillDirs</code></td></tr><tr><td>400</td><td><code>user-dsh</code></td><td><code>&lt;dshHome&gt;/skills</code></td></tr><tr><td>500</td><td><code>user-agents</code></td><td><code>&lt;agentsHome&gt;/skills</code></td></tr><tr><td>600</td><td><code>bundled</code></td><td><code>Config.bundledSkillDir</code>（配置时）</td></tr></tbody></table>
+<p>项目根目录为包含 <code>.git</code> 的最近祖先目录（找不到时用当前 cwd）；当 <code>ctx.fs</code> 可用时，git-root 向上查找通过文件系统服务探测 <code>.git</code>，使远程或沙箱工作区不会回退到宿主文件系统边界。Chokidar 监视目录变更，watcher 失败使当前观测不完整但不会隐藏可读候选项。</p>
+<h2>调用策略：model/user invocable</h2>
+<pre><code class="language-ts">/** Invocation controls shared by skill discovery consumers. */
+interface SkillInvocationPolicy {
+  /** Whether model-facing catalogs and loaders include this skill. */
+  readonly modelInvocable: boolean
+  /** Whether human-facing command catalogs and loaders include this skill. */
+  readonly userInvocable: boolean
+}</code></pre>
+<p>本地提供方读取名称完全匹配的 kebab-case frontmatter 键 <code>disable-model-invocation</code> 和 <code>user-invocable</code>，省略的字段默认为 <code>true</code>。四个组合都保留：</p>
+<table><thead><tr><th>modelInvocable</th><th>userInvocable</th><th>效果</th></tr></thead><tbody><tr><td>true</td><td>true</td><td>模型与人类都可调用（默认）</td></tr><tr><td>true</td><td>false</td><td>仅模型可调用</td></tr><tr><td>false</td><td>true</td><td>仅人类可调用（命令目录）</td></tr><tr><td>false</td><td>false</td><td>只能由受信的 <code>ctx.skills.get()</code> 调用方获取</td></tr></tbody></table>
+<h2>skill 身份与加载</h2>
+<ul><li>名称是 kebab-case（<code>^[a-z0-9]+(?:-[a-z0-9]+)*$</code>）</li><li>本地提供方接受目录包（<code>&lt;name&gt;/SKILL.md</code>）与扁平 Markdown 文件（<code>&lt;name&gt;.md</code>）；不支持嵌套递归的 <code>**/SKILL.md</code></li><li>模型会话目录仅使用可调用 skill 的 <code>name</code> 和 <code>description</code>——<strong>从不使用正文或绝对文件路径</strong></li><li>完整的 <code>SkillSummary</code> 携带 <code>whenToUse</code>（额外路由指引）、<code>source</code>、<code>provider</code> 与 <code>resourceBase</code></li></ul>
+<h2>面向模型的工具</h2>
+<p><code>skill</code> 工具（<code>dsh-tool-skill</code>）：</p>
+<ul><li>消费方拥有初始目录和替换目录：目录变化时经 <code>agent.inject()</code> 作为 user/message <strong>替换</strong>注入（<code>form: 'catalog'</code>）</li><li>模型按名称加载 skill 正文，正文作为 <code>form: 'instructions'</code> 的注入上下文进入下一次请求</li><li>发现不完整（提供方失败）时结果不可缓存——消费方保留上一份经过自身过滤的可用目录并重试</li></ul>
+<h2>生命周期链路</h2>
+<pre><code class="language-text">磁盘 (SKILL.md) → 提供方 list() 发现 → 注册表合并分层目录
+  → skill 工具列出目录（modelInvocable 过滤）
+  → 模型调用 skill(&quot;graphify&quot;)
+  → 获胜提供方 get() 返回 SkillDefinition
+  → 正文经 agent.inject() 注入 → 下一次 pre-step 进入请求</code></pre>
+<h2>与参考实现的对比</h2>
+<p>Claude Code 的 Skills 系统有&quot;预算感知描述截断、双模式执行（inline/fork）、权限白名单、条件激活、动态发现到远程技能加载&quot;。DeepSeek Harness 的版本同样从磁盘加载、支持 frontmatter 与动态发现，但<strong>不引入独立的执行模式</strong>——skill 就是注入指令，执行仍走统一的工具流水线；权限与沙箱由既有的审批/沙箱策略覆盖，不需要 skill 自带的权限白名单。</p>
+      <div class="pagenav"><a class="card prev" href="hooks.html"><div class="label">上一页</div><div class="title">Hooks：Claude Code/Codex 桥接</div></a><a class="card next" href="sdk.html"><div class="label">下一页</div><div class="title">SDK 与协议：自动化接入</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

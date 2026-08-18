@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>SDK 与协议：自动化接入 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="plugins.html">插件开发：从注册到生效</a><a class="item" href="hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="skills.html">Skills：技能系统</a><a class="item active" href="sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 可扩展性 / SDK 与协议：自动化接入</div>
+      <h1>SDK 与协议：自动化接入</h1>
+<blockquote><p>DeepSeek Harness 的自动化接入面：换行分隔 JSON-RPC 2.0 的 TypeScript SDK、仅自动化的 Agent Client Protocol（ACP）服务器、<code>dsh</code> CLI 的 profile 体系，以及 Python SDK——四个入口，同一套 agent 核心。</p></blockquote>
+<h2>一图看懂四个接入面</h2>
+<pre><code class="language-text">┌─────────────────────────────────────────────────────────┐
+│                   同一套 agent 核心                       │
+│   ctx.agents / ctx.agentLoop / ctx.sessions / ctx.tools  │
+└─────────────────────────────────────────────────────────┘
+     ▲              ▲               ▲              ▲
+     │              │               │              │
+  Web UI       CLI (dsh)      JSON-RPC SDK    ACP 服务器
+  (浏览器)     (web/headless)  (TS + Python)   (自动化客户端)</code></pre>
+<h2>JSON-RPC SDK</h2>
+<p><code>packages/sdk</code> 三个包：</p>
+<table><thead><tr><th>包</th><th>职责</th></tr></thead><tbody><tr><td><code>dsh-sdk-protocol</code></td><td>换行分隔 JSON-RPC 2.0 传输：一紧凑 JSON 帧一行；id+method=请求、id=响应、method=通知；畸形行忽略</td></tr><tr><td><code>dsh-sdk-client</code></td><td>TypeScript client</td></tr><tr><td><code>dsh-sdk-jsonrpc-server</code></td><td>stdio 服务：每个 <code>sessionId</code> get-or-create 一个 agent；<strong>stdout 只承载协议帧</strong></td></tr></tbody></table>
+<p><strong>Wire 面</strong>（三个方法 + 四个通知）：</p>
+<pre><code class="language-text">initialize → { serverInfo: { name: 'deepseek-harness-sdk-runtime', version } , maxTokens }
+session/prompt { sessionId, content } → { messageId }      ← 入队即返收据
+shutdown → flush → dispose → exit 0
+
+通知: session.event（全会话未过滤） / session.status（running/idle）
+      subagent.started / subagent.finished（仅进程内）</code></pre>
+<p>已知限制：无协议版本协商（<code>serverInfo.version</code> 为 <code>0.0.1</code> 未校验）、无 cancel/session-close 方法。</p>
+<h2>ACP：仅自动化</h2>
+<p><code>@deepseek-ai/dsh-acp</code> 是 <strong>Agent Client Protocol</strong> 服务器（JSON-RPC stdio，<code>AgentSideConnection</code> 驱动 <code>ctx.agents</code>）——一个<strong>传输适配器</strong>，不暴露编辑器导航/回放/命令/模式等 UI 概念。</p>
+<table><thead><tr><th>方法</th><th>行为</th></tr></thead><tbody><tr><td><code>initialize</code></td><td>只按需广告 image prompt，不广告 session/editor/terminal/fs/MCP 能力</td></tr><tr><td><code>session/new</code></td><td>新鲜 agent，绝对 cwd；拒绝非空 <code>additionalDirectories</code>/<code>mcpServers</code></td></tr><tr><td><code>session/prompt</code></td><td>保序文本 + inline 图片；每 session 一个 in-flight；quiescence 报 <code>end_turn</code>/<code>cancelled</code></td></tr><tr><td><code>session/update</code></td><td>逐 committed <code>assistant/message</code> 块发 <code>agent_message_chunk</code></td></tr><tr><td><code>session/request_permission</code></td><td>桥拥有的带 tool call id 审批请求：one-shot allow/reject</td></tr></tbody></table>
+<p>限制：仅新鲜会话、仅栅格图片（PNG/JPEG/WebP/GIF）、仅已提交答案。主客户端是 <code>dsh-subagent-acp</code>；<code>pnpm run demo:acp</code> 启动演示。</p>
+<h2>Typert：类型安全远程调用</h2>
+<p>Host↔Client 的远程方法调用层（<code>ctx.typert</code> + <code>ctx.typertGateway</code>）：业务服务用 <code>@Remote</code> / <code>@RemoteScope(key)</code> 声明对 Client 开放的方法；复杂 Host 对象经 <code>TypertLookupMap</code> 映射为 wire identity（如 <code>Agent</code> → <code>agentId</code>）。请求只发 endpoint + 具名 <code>args</code>；协作式取消 = 最后一个 <code>signal: AbortSignal</code> 参数。Client 用具体函数（<code>ctx.remote.&lt;namespace&gt;</code>）而非 Proxy。</p>
+<h2>CLI：profile 体系</h2>
+<pre><code class="language-sh">dsh web                        # = --profile web 别名，启动 Web UI
+dsh --profile headless &quot;任务&quot;   # 一次性运行器，无服务器
+dsh --profile &lt;name&gt;           # 任意具名 profile（$DSH_HOME/profiles/&lt;name&gt;）
+dsh plugin --profile &lt;name&gt; &lt;pnpm args&gt;
+dsh --profile web --dump-config   # 打印实际组合树</code></pre>
+<p>分层顺序：bundles（<code>dsh.profile.bundles</code> 顺序）→ profile <code>cordis.patch.yml</code> → <code>$DSH_HOME/cordis.patch.yml</code> → <code>--patch</code> overlays。launcher 只解析自身 flags，其余交给 booted profile。<code>headless</code> 的核心执行能力是 Code Mode worker：任务作为普通用户消息提交，等 quiescence、flush Session、stdout 打印最后非空 assistant 文本、经 <code>ctx.appExit</code> 退出（<code>turn/end</code> completed → 0，否则 1）。</p>
+<h2>Python SDK</h2>
+<p><code>deepseek-harness-sdk</code>（模块 <code>deepseek_harness</code>）：</p>
+<pre><code class="language-python">from deepseek_harness import DeepSeekHarness
+
+with DeepSeekHarness(
+    provider=&quot;deepseek-official&quot;,
+    model=&quot;deepseek-v4-flash&quot;,
+    max_tokens=49_152,
+    cwd=str(workspace),
+    session_root=str(sessions),
+    cordis=str(config),
+) as harness:
+    result = harness.run(&quot;Inspect the repository and fix the failing tests.&quot;, session_id=&quot;example-001&quot;)
+print(result.final_response)</code></pre>
+<ul><li><code>DeepSeekHarness</code> context manager <strong>懒启动 bundled 运行时</strong>（<code>deepseek-harness-runtime-bin</code> 平台 wheel），持续复用直至退出——不需要系统 Node.js</li><li>复用同一个 harness 与 session id 会保留该会话拥有的 Bash 进程（工作目录、导出的变量、shell 函数）</li><li><code>Session.run()</code> → <code>RunResult(session_id, final_response, finish_reason, events, notifications, session_root)</code></li><li>继承 <code>DEEPSEEK_BASE_URL</code> / <code>DEEPSEEK_API_KEY</code> 环境变量</li></ul>
+<h2>选择指南</h2>
+<table><thead><tr><th>场景</th><th>入口</th></tr></thead><tbody><tr><td>人在浏览器里用</td><td><code>dsh web</code>（Web UI）</td></tr><tr><td>CI/CD 一次性任务</td><td><code>dsh --profile headless &quot;任务&quot;</code></td></tr><tr><td>从 TypeScript 程序驱动</td><td>JSON-RPC SDK（<code>dsh-sdk-client</code>）</td></tr><tr><td>从 Python 程序驱动</td><td><code>deepseek-harness-sdk</code></td></tr><tr><td>自动化客户端（MCP 之外的 agent 协议）</td><td>ACP 服务器（<code>dsh-acp</code>）</td></tr></tbody></table>
+      <div class="pagenav"><a class="card prev" href="skills.html"><div class="label">上一页</div><div class="title">Skills：技能系统</div></a><a class="card next" href="../safety/why-safety-matters.html"><div class="label">下一页</div><div class="title">安全至关重要：威胁模型</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

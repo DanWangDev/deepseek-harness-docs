@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>仓库布局：包的地图 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item active" href="layout.html">仓库布局：包的地图</a><a class="item" href="invariants.html">运行时不变式：架构的自证</a><a class="item" href="telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 内部机制 / 仓库布局：包的地图</div>
+      <h1>仓库布局：包的地图</h1>
+<blockquote><p>DeepSeek Harness 的 monorepo 布局：<code>packages/</code> 下的包分组、vendor 的 Cordis 源码、docs 分层与示例组合——从仓库结构读懂产品边界。</p></blockquote>
+<h2>顶层布局</h2>
+<pre><code class="language-text">vendor/      Vendored Cordis source — manifest + sync procedure in vendor/README.md
+packages/    @deepseek-ai/dsh-&lt;pkg&gt; workspaces at packages/&lt;group&gt;/&lt;pkg&gt;/
+  core/        product API spine: session, system-prompt, tools, agent, agent-loop
+  api/         Remote BFF assembly and Typert RPC gateway
+  typert/      type graph generator, loader, and runtime registry
+  llm/         LLM capability: Service Definition/Consumer + DeepSeek providers
+  e2b/         E2B POC: sandbox + FS/subprocess adapters
+  shell/       bash capability: Service Definition + local/pwsh providers + shell Consumers
+  subprocess/  subprocess capability + local process-tree provider
+  terminal/    persistent sessions
+  fs/          filesystem capability + policy
+  lsp/         language-server capability
+  skill/       skill provider registry + local impl + catalog/loader tool
+  web/         web capability: Service Definition + search/fetch providers + tool Consumer
+  compaction/  compaction capability + basic provider
+  context/     request-context plugins
+  subagent/    subagent capability: Service Definition + providers + delegation Consumers
+  bundle/      installable dsh --profile patch-layer bundles
+  workflow/    workflow capability + worker-thread provider + tool Consumer
+  todo/        todo_write tool
+  plan/        plan mode as logged state
+  preset/      per-session agent composition from preset cordis.yml files
+  guard/       loop-hygiene + tool-timeout plugins
+  self-modification/  the agent inspects/mounts its own plugins
+  hooks/       Claude Code/Codex hook bridges + wire-protocol library
+  session/     durable session data: persistence, projection, titles, telemetry
+  identity/    anonymous identity
+  settings/    user-settings capability + file provider
+  credentials/ credential-reference capability + env/.env provider
+  acp/         automation-only Agent Client Protocol server
+  interaction/ approval/interaction capabilities, permission, commands, ask-user
+  boot/        shared app-bin glue
+  sdk/         JSON-RPC protocol, server, and TypeScript client
+  examples/    demo bundles (agent-spine + CLI/ACP/JSON-RPC bins)
+  support/     dev/test infrastructure
+  util/        zero-dependency utilities
+python/      Python SDK and bundled runtime (see python/README.md)
+native/      @deepseek-ai/node-addon-landlock-run source of record (see native/README.md)
+examples/    Runnable cordis.yml leaves over packages/examples bundles
+.agents/     Agent workflows and Agent Notes
+docs/        architecture, generated catalogs, postmortems, cookbook
+scripts/     repo gates and generators
+website/     VitePress projection of selected bilingual docs/ sources</code></pre>
+<h2>分组规律</h2>
+<table><thead><tr><th>组</th><th>主题</th><th>代表性包</th></tr></thead><tbody><tr><td><code>core/</code></td><td>产品 API 主干：会话、提示词、工具、agent、循环、作用域</td><td><code>core/session</code>、<code>core/tools</code>、<code>core/agent-loop</code>、<code>core/scope</code></td></tr><tr><td>能力族</td><td>每个 seam 三个包：Definition/Provider/Consumer</td><td><code>shell/<em></code>、<code>fs/</em></code>、<code>web/<em></code>、<code>subagent/</em></code>、<code>skill/<em></code>、<code>workflow/</em></code>、<code>compaction/*</code></td></tr><tr><td><code>interaction/</code></td><td>人类交互：审批、权限、命令、ask-user</td><td><code>user-approval</code>、<code>permission-presets</code>、<code>commands</code></td></tr><tr><td><code>bundle/</code></td><td>可安装的 profile patch 层</td><td><code>base</code>、<code>web-app</code>、<code>headless</code></td></tr><tr><td><code>sdk/</code> + <code>acp/</code> + <code>api/</code></td><td>自动化接入面</td><td>JSON-RPC SDK、ACP 服务器、Typert 网关</td></tr><tr><td><code>util/</code></td><td>零依赖工具库</td><td><code>brand</code>（品牌化 ID 原语）</td></tr></tbody></table>
+<h2>命名约定</h2>
+<ul><li>每个 npm 包是 <code>@deepseek-ai/dsh-&lt;name&gt;</code>；vendored 包被 rescope 并 <code>private: true</code></li><li><code>@deepseek-ai/cordis</code> 是每个 harness 包的 peerDependency（+ dev）</li><li>全部 ESM（<code>&quot;type&quot;: &quot;module&quot;</code>）；跨包用包名导入，本地相对导入用 <code>.ts</code></li></ul>
+<h2>一个 seam 的三个包</h2>
+<p>以 shell 为规范范例：<code>packages/shell/shell</code>（Service Definition：<code>ctx.shell</code>）、<code>packages/shell/bash-local</code> + <code>packages/shell/bash-sandbox</code>（Provider）、<code>packages/shell/tool-bash</code>（Consumer）。角色需要独立演进时通常位于不同包，但属于同一关注点时一个包也可以承担多个角色（<code>dsh-llm</code> 同时是 Service Definition 和 Consumer）。</p>
+<h2>Docs 分层</h2>
+<p>仓库的 <code>docs/</code> 采用严格的分层（每种事实只有一个家）：</p>
+<table><thead><tr><th>层</th><th>内容</th></tr></thead><tbody><tr><td><code>docs/architecture.md</code></td><td>有序地图：组合、核心包、循环、seam、扩展点</td></tr><tr><td><code>docs/subsystems/*.md</code></td><td>每个子系统一页：类型定义、语义、生成的 Cordis API</td></tr><tr><td><code>docs/cookbook/*.md</code></td><td>分步指南（adding-a-package、adding-a-tool……）</td></tr><tr><td><code>docs/user/*.md</code></td><td>产品面向用户指南（Web UI、providers、Python SDK）</td></tr><tr><td>生成目录</td><td><code>tool-catalog</code>、<code>config-catalog</code>、<code>persistence-catalog</code>、<code>module-graph</code>（从源码生成，新鲜度门禁）</td></tr><tr><td><code>.agents/notes/</code></td><td>Agent Notes：决策记录（为什么、放弃了什么、如何验证）</td></tr></tbody></table>
+<h2>从布局读懂产品</h2>
+<ul><li><strong>没有 <code>cli/</code> 主包</strong>：CLI 是 <code>apps/cli</code> 上的薄 launcher，真正的组合在 bundles/profile——&quot;外壳可替换&quot;</li><li><strong>没有 <code>kernel/</code></strong>：<code>core/</code> 不是特权内核，只是&quot;每个组合都会启动&quot;的包集合——&quot;一切皆插件&quot;</li><li><strong>能力族三件套</strong>：每个 seam 都有 Definition/Provider/Consumer——&quot;能力是完整的&quot;</li><li><strong>生成目录有门禁</strong>：tool/config/persistence catalog 由脚本从源码生成并被 freshness gate 校验——文档与代码同步是机械保证，不是习惯</li></ul>
+      <div class="pagenav"><a class="card prev" href="../features/jobs.html"><div class="label">上一页</div><div class="title">后台任务：长时运行管理</div></a><a class="card next" href="invariants.html"><div class="label">下一页</div><div class="title">运行时不变式：架构的自证</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

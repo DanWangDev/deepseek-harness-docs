@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Agent Preset：按会话组装能力 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item active" href="preset.html">Agent Preset：按会话组装能力</a><a class="item" href="goal.html">同会话目标：持久完成目标</a><a class="item" href="self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / Agent 机制 / Agent Preset：按会话组装能力</div>
+      <h1>Agent Preset：按会话组装能力</h1>
+<blockquote><p>Agent preset 是&quot;每个会话拥有不同能力集合&quot;的机制：一份 <code>agent.cordis.yml</code> 描述一个 agent 的组合，按需<strong>常驻挂载（standing mount）</strong>到隔离 realm，会话通过 scope 父链加入——preset 是模型面对的工具、提示词与服务的组装器。</p></blockquote>
+<h2>为什么需要 Preset</h2>
+<p>同一个进程里可以有多种 agent：默认的&quot;全能力工程师&quot;、只读审计员、Code Mode 的纯协议 agent、绑定特定后端子 agent……它们需要的<strong>工具集、提示词、服务完全不同</strong>。</p>
+<p>Agent preset 就是为这个场景设计的：一个 preset 是目录里的一份 <code>agent.cordis.yml</code>（加上可选的 <code>preset.yml</code> 承载 <code>name</code>/<code>description</code> 显示文本），描述该 agent 的组合。</p>
+<h2>常驻挂载与隔离 realm</h2>
+<p>关键机制是 <strong>standing mount</strong>：roster 对每个 preset 做<strong>一次进程级常驻挂载</strong>——挂在 roster 服务自己的 UNTRACED context 下（隔离 realm），services 经各 entry 自己的 inject store 解析。这带来三个性质：</p>
+<ul><li><strong>共享</strong>：多个 agent 加入同一 preset 时，用的是同一个已组合实例——相同的插件对象、相同的工具注册、相同的提示词段（<code>composeFrom</code> 是 bind 而非 mount）</li><li><strong>常驻</strong>：standing mount 只组合插件，不启动 agent、不启动会话、不启动轮次——冷 transcript 读也能解析工具 presenters</li><li><strong>隔离</strong>：<code>isolate</code> realm 的服务对外部（包括 host）不可见——<code>serviceFor(agent, name)</code> 是唯一从外部读取的通道</li></ul>
+<pre><code class="language-text">preset roster
+  └─ standing mount（隔离 realm）← 每 preset 一次，进程级
+       └─ agent A（scope 挂载到 preset 层）
+       └─ agent B（scope 挂载到 preset 层）
+          └─ child agent（composeFrom 绑定父的组合）</code></pre>
+<p>视图解析顺序：<code>agent → preset → global</code>——scope 链上最近层的条目赢得重名工具。</p>
+<h2>服务：<code>ctx.agentPresets</code></h2>
+<table><thead><tr><th>方法</th><th>行为</th></tr></thead><tbody><tr><td><code>list()</code> / <code>resolve(id)</code></td><td>列出/解析 preset；未 memoize——每次重读根目录，进程运行期间新写的 preset 立即可见</td></tr><tr><td><code>mount(agentCtx, id)</code></td><td>确保 standing mount 并把 agent 的 scope key 挂到 preset 层；从 agent factory 的 <code>setup(agentCtx)</code> 调用，拒绝即回滚创建</td></tr><tr><td><code>composeFrom(agentCtx, parentCtx)</code></td><td>子 agent 绑定父<strong>同一个</strong>组合实例——同步、无组成失败模式、不读 roster</td></tr><tr><td><code>recompose(agentCtx, id)</code></td><td>重链到另一个 preset；<strong>仅当 agent 未产出任何内容</strong>（中途换工具会让已记录的工具调用无法复现）</td></tr><tr><td><code>standingKeyFor(id)</code></td><td>冷 transcript 读的 standing scope key</td></tr><tr><td><code>copy(from, id, name?)</code></td><td>唯一的 authoring 写：整目录拷贝（&quot;拷贝与源一样可加载&quot;）</td></tr><tr><td><code>remove(id)</code></td><td>删除本地作者 preset（随发行版交付的不可删）</td></tr></tbody></table>
+<p>切换 preset 会记录仅日志的 <code>agent-preset/selected</code> 会话事件——因此回放能重建会话当时运行在哪个组合上。</p>
+<h2>与 Bundle 的关系</h2>
+<p>Bundle（组合包）是&quot;配置项 + 挂载代码&quot;的<strong>分发格式</strong>；preset 是&quot;按 agent 组装能力&quot;的<strong>会话机制</strong>。两者配合：</p>
+<ul><li>profile 按序叠加 bundles（如 <code>dsh-base</code> 提供基础行：模型适配器、工具、持久化、沙箱/审批策略、设置、凭据、遥测）</li><li>preset 在 profile 之上按 agent 定制——服务行需要 <code>isolate</code> realm 时，该服务只对加入该 preset 的 agent 可见</li></ul>
+<pre><code class="language-yaml"># agent.cordis.yml（示意）
+services:
+  tool-bash:
+    sandbox: read-only
+  deployment:persona:
+    section: &quot;You are a careful auditor.&quot;</code></pre>
+<h2>归属位置</h2>
+<table><thead><tr><th>目标</th><th>机制</th></tr></thead><tbody><tr><td>让某个会话拥有不同的能力集合</td><td>组装一个 agent preset；其中的服务行需要 <code>isolate</code> realm</td></tr><tr><td>子 agent 继承父的能力</td><td><code>composeFrom</code>（绑定同一组合实例，而非重新解析）</td></tr><tr><td>中途换组合</td><td><code>recompose</code>（仅未产出的 agent）</td></tr></tbody></table>
+<h2>常见组合</h2>
+<p>随发行版交付的 profile 模板：<code>web</code>（浏览器应用 + coding persona）与 <code>headless</code>（一次性运行器，无服务器）。<code>dsh-base</code> 是每个 profile 的第一层 bundle；平台门控 shell 栈（win32 禁用 bash 沙箱、启用 pwsh）也在 bundle 层处理。</p>
+      <div class="pagenav"><a class="card prev" href="../context/token-budget.html"><div class="label">上一页</div><div class="title">Token 预算与请求头</div></a><a class="card next" href="goal.html"><div class="label">下一页</div><div class="title">同会话目标：持久完成目标</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

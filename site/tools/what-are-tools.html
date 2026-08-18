@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>工具系统设计：AI 的双手 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item active" href="what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="task-management.html">任务管理：todo_write 快照</a><a class="item" href="web.html">Web 访问：搜索与抓取</a><a class="item" href="subagent.html">子 Agent：委派与编排</a><a class="item" href="workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 工具系统 / 工具系统设计：AI 的双手</div>
+      <h1>工具系统设计：AI 的双手</h1>
+<blockquote><p>深入理解 DeepSeek Harness 的工具抽象：从 <code>ToolDefinition</code> 类型、<code>defineTool</code> DSL、注册机制、带守卫的执行流水线到渲染系统——工具如何通过统一的接口成为 agent 的能力。</p></blockquote>
+<h2>一个工具是什么</h2>
+<p>一个已注册工具（<code>ToolDefinition</code>）由四部分组成：</p>
+<table><thead><tr><th>部分</th><th>内容</th></tr></thead><tbody><tr><td><strong>面向模型的 schema</strong></td><td><code>ToolSchema</code>：<code>name</code>、<code>description</code>、<code>parameters</code>（JSON Schema）</td></tr><tr><td><strong>规范输出声明</strong></td><td><code>output</code>：原始 JSON Schema + 纯投影函数（<code>render</code> + 可选 <code>presentationMeta</code>）</td></tr><tr><td><strong>执行函数</strong></td><td><code>execute(args, exec)</code>：返回规范的无损 JSON 值</td></tr><tr><td><strong>展示与调度元数据</strong></td><td><code>finalizeContent</code>、<code>timeoutMs</code>、<code>isConcurrencySafe</code>、<code>presentCall</code>、<code>presentResult</code></td></tr></tbody></table>
+<pre><code class="language-ts">/** A registered tool: its schema plus the execution function. */
+interface ToolDefinition extends ToolSchema {
+  /** Mandatory canonical output declaration. */
+  readonly output: ToolOutputDefinition
+  /** Run one accepted call and return only its canonical lossless-JSON value. */
+  execute(args: unknown, exec: ToolRunContext): Promise&lt;unknown&gt;
+  /** Synchronous last-mile transform for model-facing content. */
+  finalizeContent?(exec, result): ContentBlock[] | undefined
+  /** Cooperative tool-call timeout budget in milliseconds. */
+  timeoutMs?: number
+  /** Pure synchronous classifier for overlap with sibling tool calls. */
+  isConcurrencySafe?(args: unknown): boolean
+  /** How to present the PENDING state of one call in a UI. */
+  presentCall?(args: unknown): ToolCallView | undefined
+  /** How to present the COMPLETED state. */
+  presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined
+}</code></pre>
+<p><strong>执行与展示回调绝不泄漏到模型请求</strong>：<code>schemas()</code> 只投影 <code>name</code>/<code>description</code>/<code>parameters</code>。</p>
+<h2><code>defineTool</code>：类型化 schema DSL</h2>
+<p>第一方工具不需要手写校验——<code>defineTool({ name, description, parameters, output, execute, … })</code>：</p>
+<ul><li>从 <code>ParameterSchemaSpec</code> 推导参数类型并绑定 <code>validateArgs()</code></li><li>从 <code>OutputSchema</code> 推导函数体返回类型</li><li>参数不匹配抛 <code>ToolArgsError</code>（<code>INVALID_ARGS</code>）；输出无效抛 <code>ToolOutputError</code>（<code>INVALID_TOOL_OUTPUT</code>）</li></ul>
+<p>值 schema 词汇（<code>ValueSchemaSpec</code>）支持 <code>string</code>、<code>number</code>、<code>integer</code>、<code>boolean</code>、<code>null</code>、<code>array</code>、<code>object</code>、仅作者侧可用的 <code>json</code>，以及要求恰好命中一个分支的 <code>oneOf</code>。精确推导保持到 16 层容器，之后放宽为 <code>JsonValue</code>——避免耗尽 TypeScript 的类型实例化栈。</p>
+<h2>执行流水线：带守卫的瀑布</h2>
+<p><code>ctx.tools.execute()</code> 让一次调用依次经过七个阶段：</p>
+<pre><code class="language-text">tools/pre-execute (waterfall)   → allow | deny | ask
+ToolGuard（单调）               → reason = deny；undefined = 放行
+tools/execute (waterfall)       → 环绕分派：超时、重试、指标
+tools/post-execute (waterfall)  → accept | replace | block
+finalizeContent（定义自有）     → 恰好一次的最后内容变换
+tools/result (emit)             → 冻结的最终结果</code></pre>
+<pre><code class="language-ts">/** Pre-dispatch decision. `allow` runs the call; `deny` materializes an error; `ask` runs only after an approval service returns `allowed-once`. */
+type PreToolDecision =
+  | { kind: 'allow' }
+  | { kind: 'deny'; reason: string }
+  | { kind: 'ask'; reason?: string }</code></pre>
+<p>关键不变量：</p>
+<ul><li><strong>Guard 是单调的</strong>：<code>ToolGuard</code> 返回类型有意不包含 allow 结果——<code>undefined</code> 保留 waterfall 的决策，返回的 reason 只能缩减权限，因此后续监听器无法撤销它</li><li><strong>参数不可改写</strong>：历史、审计、UI 和执行必须保持一致</li><li><strong><code>ask</code> 失败即拒绝</strong>：未授权、缺少审批通道或服务、或无 agent 的请求都会变为拒绝；只有 <code>allowed-once</code> 才继续执行</li><li><strong>失败不终止轮次</strong>：未知工具和抛异常的工具都变为结构化错误（<code>ToolNotFoundError</code> → <code>UNKNOWN_TOOL</code>），调用失败但循环继续</li></ul>
+<h2>执行调度：并行与独占</h2>
+<pre><code class="language-ts">/** Scheduling mode for one pending call. `parallel` may overlap with siblings; `exclusive` runs alone and forms an ordering barrier. */
+type ToolExecutionMode =
+  | { kind: 'parallel' }
+  | { kind: 'exclusive' }</code></pre>
+<p>agent loop 向注册表查询每个待处理调用的执行模式，据此形成独占屏障和滚动池并行执行。只有 <code>isConcurrencySafe(args)</code> 精确返回 <code>true</code> 才可并行；未知、隐藏、未声明、无效或抛异常的分类器都是<strong>独占</strong>（fail-closed）。并行执行的函数体不得修改父级拥有的状态。</p>
+<h2>结果：执行期值与持久投影分离</h2>
+<p>工具返回的规范 <code>value</code> 仅存在于执行期间：循环只持久化 <code>content</code>、<code>error</code> 和 <code>meta</code>。注册表会在 <code>tools/result</code> 之前物化持久展示字段，因此<strong>最终实时观察者能看到精确的执行期值，以及可安全用于后续持久追加的字段</strong>。回放可以重现展示，却无法重建规范的中间值。</p>
+<h2>渲染意图：card 词汇</h2>
+<p>工具希望其调用在 UI 中如何呈现，<strong>提供方无关</strong>——<code>presentCall</code>/<code>presentResult</code> 返回 <code>card</code> 标签的渲染意图，UI 桥接层据此分发：</p>
+<table><thead><tr><th>卡片</th><th>用途</th></tr></thead><tbody><tr><td><code>generic</code></td><td>默认卡片（标题 + 原始参数）</td></tr><tr><td><code>terminal</code></td><td>shell 命令 → 终端卡片（输出 + 退出状态）</td></tr><tr><td><code>diff</code></td><td>文件创建/修改 → 行内 diff 卡片</td></tr><tr><td><code>search</code></td><td>完成的发现型搜索（grep 按文件分组匹配 / glob 扁平路径列表）</td></tr><tr><td><code>read</code></td><td>完成的文件读取（带行号、可选语法高亮）</td></tr><tr><td><code>web</code></td><td>完成的 web 检索（结构化 <code>sources</code>/<code>answer</code>，或 <code>url</code>/<code>statusCode</code>）</td></tr></tbody></table>
+<p><code>ToolCallKind</code>（<code>'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'fetch' | 'other'</code>）为通用卡片选择图标。host/client 运行时把这套中性词汇投影为各自的视图。</p>
+<h2>工具目录一览</h2>
+<table><thead><tr><th>工具族</th><th>模型可见名称</th><th>seam</th></tr></thead><tbody><tr><td>文件系统</td><td><code>read</code>、<code>write</code>、<code>edit</code>、<code>read_image</code>、<code>glob</code>、<code>grep</code></td><td><code>ctx.fs</code> + <code>ctx.subprocess</code></td></tr><tr><td>命令执行</td><td><code>bash</code>、<code>pwsh</code></td><td><code>ctx.shell</code> + <code>ctx.jobs</code></td></tr><tr><td>Web 访问</td><td><code>web_search</code>、<code>web_fetch</code></td><td><code>ctx.web</code></td></tr><tr><td>任务管理</td><td><code>todo_write</code></td><td>会话所有状态</td></tr><tr><td>委派</td><td><code>subagent</code>、<code>subagent_fork</code>、<code>send_message</code>、<code>interrupt_agent</code>、<code>list_agents</code>、<code>report</code></td><td><code>ctx.subagents</code></td></tr><tr><td>编排</td><td><code>workflow</code>、<code>ralph</code></td><td><code>ctx.workflowEngine</code></td></tr><tr><td>技能</td><td><code>skill</code></td><td><code>ctx.skills</code></td></tr><tr><td>其他</td><td><code>ask_user_question</code>、<code>exit_plan_mode</code>、<code>job_<em></code>、<code>terminal_</em></code>、<code>session_<em></code>、<code>create_goal</code>/<code>get_goal</code>/<code>update_goal</code>、<code>lsp</code>、<code>schedule_</em></code></td><td>各自 seam</td></tr></tbody></table>
+<p>后续页面逐一拆解这些工具族的实现。</p>
+      <div class="pagenav"><a class="card prev" href="../core/scope.html"><div class="label">上一页</div><div class="title">Agent 作用域：可见性即生命周期</div></a><a class="card next" href="filesystem.html"><div class="label">下一页</div><div class="title">文件系统工具：原子读写编辑</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

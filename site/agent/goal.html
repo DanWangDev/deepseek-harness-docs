@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>同会话目标：持久完成目标 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="preset.html">Agent Preset：按会话组装能力</a><a class="item active" href="goal.html">同会话目标：持久完成目标</a><a class="item" href="self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / Agent 机制 / 同会话目标：持久完成目标</div>
+      <h1>同会话目标：持久完成目标</h1>
+<blockquote><p>目标（goal）是附着在现有会话上的单个持久完成目标：<code>create_goal</code>/<code>get_goal</code>/<code>update_goal</code> 工具 + <code>/goal</code> 人类命令，按修订号演进的 <code>active</code>/<code>paused</code>/<code>blocked</code>/<code>complete</code> 阶段，以及 Goal Round 续行机制。</p></blockquote>
+<h2>目标是什么</h2>
+<p>一个<strong>目标</strong>附着在现有会话上，而不是一段独立对话：</p>
+<ul><li>它是一份<strong>持久状态</strong>（<code>goal/change</code> 会话事件），不是调度器，也不是调度队列</li><li>会话日志仍是其真源——fork、恢复、压缩自动携带目标</li><li>它的工作通过<strong>续行</strong>进行：同会话驱动器把 Goal Round 具体化为一个由目标触发的轮次</li></ul>
+<pre><code class="language-ts">/** Durable continuation phase. Activation is process-local and separate. */
+type GoalPhase =
+  | 'active'
+  | 'paused'
+  | 'blocked'
+  | 'complete'</code></pre>
+<h2>数据模型</h2>
+<pre><code class="language-ts">/** Compare-and-set identity for one exact goal revision. */
+interface GoalRef {
+  readonly id: GoalId
+  /** Positive revision; every durable mutation increments it. */
+  readonly revision: number
+}
+
+/** Full durable state written by every non-clear goal mutation. */
+interface GoalSnapshot extends GoalRef {
+  readonly objective: string
+  readonly phase: GoalPhase
+  readonly blockedReason?: GoalBlockReason   // 仅 phase === 'blocked' 时存在
+  readonly maxGoalRounds: number
+}</code></pre>
+<ul><li><code>GoalId</code> 是品牌化 id；每次获准的持久变更都递增修订号——工具按 <code>{ id, revision }</code> 做 compare-and-set</li><li><strong><code>blocked</code> 是唯一表示&quot;因问题而停止&quot;的持久状态</strong>：携带稳定 lower-kebab-case 代码 + 人/模型可读说明</li><li><code>GoalView</code> 额外投影 <code>roundsStarted</code>、<code>createdAt</code>、<code>updatedAt</code> 与进程本地的 <code>activation</code>（<code>armed</code>/<code>disarmed</code>）</li></ul>
+<h2>Goal Round 与激活</h2>
+<ul><li><strong>Goal Round</strong>：为当前目标接纳的一次续行周期。同会话驱动器把 Goal Round 具体化为一个由目标触发的轮次，其中可包含零个或多个步骤；<strong>同一会话中无关的人类轮次不消耗 Goal Round 上限</strong></li><li><strong>激活</strong>：续行消费方接纳下一个 Goal Round 的进程本地权限（<code>armed</code>/<code>disarmed</code>）。它有意不参与持久回放——<strong>恢复或 fork 后，只有随后通过 <code>/goal</code> 或模型工具执行一次经人类授权的恢复变更，自动工作才能开始</strong>（disarmed 是安全默认）</li></ul>
+<h2>工具与命令</h2>
+<table><thead><tr><th>工具</th><th>行为</th></tr></thead><tbody><tr><td><code>create_goal</code></td><td>创建目标（需要直接来自人类的根权限）</td></tr><tr><td><code>get_goal</code></td><td>读取当前目标（含精确 id/revision、阶段、已完成的续行轮数、round 上限）</td></tr><tr><td><code>update_goal</code></td><td>修改目标：<code>edit</code>/<code>pause</code>/<code>resume</code> 要求人类根权限；<code>complete</code>/<code>blocked</code> 接受确切的当前 Goal Round；<code>blocked</code> 默认下限是 3 个获准的 Round</td></tr></tbody></table>
+<p><code>/goal</code> 是 <code>dsh-command-goal</code> 提供的人类命令——直接观察或更改当前目标，输出属于 UI 状态；目标领域拥有每条持久且模型可见的记录。</p>
+<h2>持久变更</h2>
+<p>每次变更都是持久的 <code>goal/change</code> 会话事件，其载荷要么是变更后的完整快照，要么是清除墓碑。严格折叠与持久投影只从这些事件派生生命周期状态——<strong>inbox 变更不会影响 goal 状态</strong>。</p>
+<pre><code class="language-text">create_goal(&quot;修复 CI&quot;)        → goal/change { phase: 'active', revision: 1 }
+[Goal Round 1: 轮次 → 步骤 → 工具]
+update_goal(revision=3, pause) → goal/change { phase: 'paused', revision: 4 }
+resume                        → goal/change { phase: 'active', revision: 5 }
+complete                      → goal/change { phase: 'complete', revision: 6 }</code></pre>
+<h2>与任务管理的关系</h2>
+<p><code>todo_write</code> 是会话内的<strong>执行清单</strong>（全量快照、UI 检查清单）；goal 是会话级的<strong>完成契约</strong>（持久阶段、round 预算、blocked 原因）。前者回答&quot;进行到哪&quot;，后者回答&quot;为什么继续、还能继续多久&quot;——两者都存储为会话事件，都从日志回放。</p>
+      <div class="pagenav"><a class="card prev" href="preset.html"><div class="label">上一页</div><div class="title">Agent Preset：按会话组装能力</div></a><a class="card next" href="self-modification.html"><div class="label">下一页</div><div class="title">自我修改：插件即运行时</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

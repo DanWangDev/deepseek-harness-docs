@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>人类命令：斜杠平面 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="providers.html">模型提供方：多端点路由</a><a class="item active" href="commands.html">人类命令：斜杠平面</a><a class="item" href="jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 功能与使用 / 人类命令：斜杠平面</div>
+      <h1>人类命令：斜杠平面</h1>
+<blockquote><p>以斜杠开头的指令，由面向人类的适配器通过 <code>ctx.commands</code> 解释并执行——<strong>不会成为模型消息</strong>。它既不同于面向模型的工具，也不同于通过 <code>ctx.shell</code> 执行 shell 命令。</p></blockquote>
+<h2>命令平面</h2>
+<p>人类命令（<code>/plan</code>、<code>/goal</code>、<code>/compact</code>……）是 UI 适配器与命令插件负责的<strong>发现、解析、分发、取消与结果渲染</strong>机制：</p>
+<pre><code class="language-text">用户输入: /plan
+  → 适配器解析 → parseCommand() → ParsedCommand
+  → 作用域解析 → CommandDescriptor（无 handler 的只读视图）
+  → command/run 事件（记录 rawInput）
+  → 对确切 agent 执行 handler
+  → CommandResult 直接呈现给 UI（不是工具结果，不是会话事件）
+  → command/done 事件</code></pre>
+<p>除非处理器另行改变持久领域，<strong>命令输出属于 UI 状态</strong>——命令不需要模型轮次，也不需要 <code>tool/call</code>/<code>tool/result</code> 事件。</p>
+<h2>定义</h2>
+<pre><code class="language-ts">/** Plugin-owned command registration. */
+interface CommandDefinition {
+  /** Lowercase command name without the leading slash. */
+  readonly name: string
+  /** Human-readable summary used in discovery UI. */
+  readonly description: string
+  /** Optional free-form input hint advertised to capable clients. */
+  readonly input?: CommandInputDescriptor
+  /** Whether command/run records rawInput. Defaults to true. */
+  readonly recordInput?: boolean
+  /** Execute against the receiving agent without sending the command to the model. */
+  readonly handler: (invocation: CommandInvocation) =&gt; CommandResult | Promise&lt;CommandResult&gt;
+}</code></pre>
+<h2>调用与结果</h2>
+<pre><code class="language-ts">/** Invocation passed to one registered command handler. */
+interface CommandInvocation {
+  readonly commandId: CommandId     // 与 command/run 事件配对
+  readonly agent: Agent             // 确切目标 agent
+  readonly rawInput: string         // 名称之后的精确文本（含分隔符）
+  readonly signal: AbortSignal      // UI 请求拥有的取消信号
+}
+
+type CommandResult =
+  | { kind: 'success'; text?: string; sourceEventSeq?: number }
+  | { kind: 'error'; text: string }</code></pre>
+<p><code>sourceEventSeq</code> 是可选字段，只用于成功结果：指向接收会话日志中更早的一条非命令事件——<code>command/done</code> 持久化同一引用，让客户端能够将命令生命周期与该领域投影合并。</p>
+<h2>随发行版提供的命令</h2>
+<table><thead><tr><th>命令</th><th>提供方</th><th>行为</th></tr></thead><tbody><tr><td><code>/plan [off|message]</code></td><td><code>dsh-plan-mode</code></td><td>切换计划模式；非空消息先选计划模式再 <code>agent.steer()</code> 提交（见<a href="../safety/plan-mode.html">计划模式</a>）</td></tr><tr><td><code>/goal</code></td><td><code>dsh-command-goal</code></td><td>观察或更改当前目标（见<a href="../agent/goal.html">同会话目标</a>）</td></tr><tr><td><code>/compact</code></td><td><code>dsh-command-compact</code></td><td>手动压缩（见<a href="../context/compaction.html">上下文压缩</a>）</td></tr><tr><td><code>/list-agents</code></td><td>独立插件</td><td>列出活跃 agent（经 sessionProjections 与实时注册表）</td></tr></tbody></table>
+<h2>与工具和 shell 的边界</h2>
+<table><thead><tr><th>维度</th><th>人类命令</th><th>模型工具</th><th>shell 命令</th></tr></thead><tbody><tr><td>触发者</td><td>人类</td><td>模型</td><td>模型（经 bash 工具）或插件</td></tr><tr><td>是否产生模型消息</td><td>否</td><td>是（tool/call 事件）</td><td>是</td></tr><tr><td>是否需要模型轮次</td><td>否</td><td>是</td><td>是</td></tr><tr><td>结果去向</td><td>UI 状态</td><td>会话日志 + UI</td><td>会话日志 + UI</td></tr><tr><td>示例</td><td><code>/plan</code></td><td><code>bash</code>、<code>read</code></td><td><code>pnpm run test</code></td></tr></tbody></table>
+<h2>注册一个命令</h2>
+<pre><code class="language-ts">import { Context } from '@deepseek-ai/cordis'
+
+export function apply(ctx: Context) {
+  ctx.commands.register({
+    name: 'mystat',
+    description: 'Print workspace statistics.',
+    handler: async ({ agent }) =&gt; {
+      const n = agent.session.events.length
+      return { kind: 'success', text: `Session has ${n} events.` }
+    },
+  })
+}</code></pre>
+<p>命令的可用性由插件组合决定：每个消费注册表的适配器都会看到全部生效定义。</p>
+      <div class="pagenav"><a class="card prev" href="providers.html"><div class="label">上一页</div><div class="title">模型提供方：多端点路由</div></a><a class="card next" href="jobs.html"><div class="label">下一页</div><div class="title">后台任务：长时运行管理</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

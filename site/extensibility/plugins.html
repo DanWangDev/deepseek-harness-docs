@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>插件开发：从注册到生效 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item active" href="plugins.html">插件开发：从注册到生效</a><a class="item" href="hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="skills.html">Skills：技能系统</a><a class="item" href="sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 可扩展性 / 插件开发：从注册到生效</div>
+      <h1>插件开发：从注册到生效</h1>
+<blockquote><p>手把手拆解 DeepSeek Harness 插件开发的完整链路：从 <code>apply(ctx)</code> 入口、<code>inject</code> 依赖声明、注册副作用与 disposer，到分发为组合包（bundle）与 patch 层的配置覆盖。</p></blockquote>
+<h2>一个最小的插件</h2>
+<p>Cordis 插件是一个带有可选 <code>inject</code> 和 <code>apply(ctx)</code> 字段的对象：</p>
+<pre><code class="language-ts">import { Context } from '@deepseek-ai/cordis'
+
+// 声明依赖：等服务就绪才启动
+export const name = 'my-plugin'
+export const inject = ['tools', 'systemPrompt']
+
+export function apply(ctx: Context) {
+  // 注册一个工具（defineTool DSL 负责 schema 与校验）
+  ctx.tools.register(defineTool({
+    name: 'my_tool',
+    description: 'Do something useful.',
+    parameters: {
+      input: { type: 'string', required: true },
+    },
+    output: { schema: { type: 'object' } },
+    execute: async (args) =&gt; ({ echoed: args.input }),
+  }))
+
+  // 注册一段提示词（order 决定拼接位置）
+  ctx.systemPrompt.section({
+    name: 'my-plugin:guidance',
+    order: 120,
+    text: 'When asked about X, prefer Y.',
+  })
+
+  // 监听事件（返回 disposer 的注册会被自动撤销）
+  ctx.on('session/event', (session, event) =&gt; {
+    console.log(session.id, event.type)
+  })
+}</code></pre>
+<p><strong>注册是可逆的副作用</strong>：<code>ctx.effect()</code> / <code>ctx.on()</code> 返回 disposer；reload 与 teardown 时按预期撤销。插件卸载时，它注册的工具从提示词消失并拒绝执行——与不存在的工具无法区分。</p>
+<h2>五个核心概念回顾</h2>
+<table><thead><tr><th>概念</th><th>在插件中的体现</th></tr></thead><tbody><tr><td>插件是实现 Service 的对象</td><td><code>apply(ctx)</code> 函数或 <code>Service</code> 子类</td></tr><tr><td>上下文是服务的容器</td><td>通过 <code>ctx.tools</code>、<code>ctx.llm</code>、<code>ctx.sessions</code> 等 key 查找服务</td></tr><tr><td><code>inject</code> 声明依赖</td><td>服务就绪才启动；加载顺序由依赖表达</td></tr><tr><td>类型化事件通信</td><td>声明合并扩展事件 map，按 <code>@mode</code> 分发</td></tr><tr><td>注册是可逆副作用</td><td>每个注册对应 disposer</td></tr></tbody></table>
+<h2>从插件到组合包（bundle）</h2>
+<p>插件代码要进入运行中的 dsh，需要一个<strong>组合条目</strong>（cordis.yml 里的行）+ 挂载代码。组合包（bundle）就是&quot;配置项 + 挂载代码&quot;的分发格式：</p>
+<pre><code class="language-yaml"># cordis.patch.yml（一个 bundle 的 patch 文件示意）
+services:
+  my-plugin:                      # 按 id 定位条目
+    config:
+      option: value</code></pre>
+<p>patch 按 id <strong>整行替换</strong> config（无 deep-merge）；<code>dsh.profile.bundles</code> 列出 profile 叠放的组合包。加载顺序：profile 列出的 bundles → profile 的 <code>cordis.patch.yml</code> → home 级 → 任意 <code>--patch</code> overlay。</p>
+<h2>工具开发的完整清单</h2>
+<table><thead><tr><th>步骤</th><th>要点</th></tr></thead><tbody><tr><td>定义 schema</td><td><code>defineTool({ name, description, parameters, output, execute })</code>；<code>parameters</code> 是隐式开放对象根，必填属性带 <code>required: true</code></td></tr><tr><td>声明输出</td><td><code>output.schema</code>（强制执行的 JSON Schema 子集）+ <code>render(args, value)</code> 纯投影</td></tr><tr><td>处理取消</td><td><code>execute</code> 必须观察或转发 <code>exec.signal</code>，在自有工作达到 quiescence 后结算</td></tr><tr><td>声明并发</td><td>可与兄弟重叠时 <code>isConcurrencySafe(args)</code> 返回 <code>true</code>；否则保持独占</td></tr><tr><td>声明超时</td><td><code>timeoutMs</code>（协作式预算；<code>dsh-tool-call-timeout-policy</code> 执行 <code>tools/execute</code> 包装）</td></tr><tr><td>声明展示</td><td><code>presentCall</code>/<code>presentResult</code> 返回 card 渲染意图（<code>generic</code>/<code>terminal</code>/<code>diff</code>/<code>search</code>/<code>read</code>/<code>web</code>）</td></tr><tr><td>写 README</td><td>包契约：config、语义、限制、扩展点与 Model Experience</td></tr></tbody></table>
+<h2>注册表 API 速查</h2>
+<table><thead><tr><th>注册表</th><th>方法</th><th>语义</th></tr></thead><tbody><tr><td><code>ctx.tools</code></td><td><code>register(def)</code> / <code>restrict(filter)</code> / <code>guard(fn)</code> / <code>schemas(scope)</code></td><td>注册/过滤/单调 guard/白名单投影</td></tr><tr><td><code>ctx.systemPrompt</code></td><td><code>section(s)</code> / <code>context(c)</code></td><td>提示词段落/动态上下文</td></tr><tr><td><code>ctx.commands</code></td><td><code>register(def)</code></td><td>人类命令（斜杠命令，不经模型轮次）</td></tr><tr><td><code>ctx.jobs</code></td><td><code>start(jobStart)</code></td><td>后台任务注册</td></tr><tr><td><code>ctx.agents</code></td><td><code>create()</code> / <code>resume()</code></td><td>创建/恢复 agent（经工厂）</td></tr><tr><td><code>ctx.llm</code></td><td>注册适配器</td><td>添加模型提供方</td></tr><tr><td><code>ctx.subagents</code></td><td>注册提供方</td><td>添加委派后端</td></tr></tbody></table>
+<h2>常见坑</h2>
+<ul><li><strong>waterfall 必须调用 <code>next()</code></strong>：不调用直接返回即短路——只做观察的监听器必须委托</li><li><strong>guard 是单调的</strong>：返回 reason 即拒绝，无法被后续监听器撤销；guard 没有 allow 结果</li><li><strong>模型可见即已记录</strong>：新增模型可见输入必须新增会话事件，从日志渲染</li><li>**<code>DEFAULT_*</code> 常量不是配置**：部署可变的选项是校验过的 <code>Config</code> 字段，从 cordis.yml 可改</li><li><strong>注册表主体事件不过滤</strong>：关于注册表本身的事件保持 unfiltered dispatch</li></ul>
+<h2>更多资源</h2>
+<ul><li>教程：<a href="https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/cordis-tutorial/index.zh.md">Cordis 教程</a>（7 课，从第一个插件到 harness 实战）</li><li>实操：<a href="https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/cookbook/extension-cookbook.zh.md">扩展实操手册</a>（功能 → 能力映射）</li><li>包模板：<a href="https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/cookbook/adding-a-package.zh.md">adding-a-package</a>、<a href="https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/cookbook/adding-a-tool.zh.md">adding-a-tool</a></li></ul>
+      <div class="pagenav"><a class="card prev" href="../agent/self-modification.html"><div class="label">上一页</div><div class="title">自我修改：插件即运行时</div></a><a class="card next" href="hooks.html"><div class="label">下一页</div><div class="title">Hooks：Claude Code/Codex 桥接</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

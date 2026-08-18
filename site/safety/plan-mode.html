@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>计划模式：先看后做 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="permission-model.html">审批模型：ask/never 决策</a><a class="item" href="sandbox.html">沙箱机制：进程隔离</a><a class="item active" href="plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 安全 / 计划模式：先看后做</div>
+      <h1>计划模式：先看后做</h1>
+<blockquote><p>基于源码解析 DeepSeek Harness 的 Plan Mode：<code>plan:policy</code> 提示词段落、<code>exit_plan_mode</code> 工具、<code>/plan</code> 命令与已记录状态的 pre-step 追加——以及它作为<strong>软性指引</strong>与沙箱/审批强制限制的边界。</p></blockquote>
+<h2>什么是计划模式</h2>
+<p>计划模式是 <code>dsh-plan-mode</code>（<code>ctx.planMode</code>，<code>PlanModeController</code>）拥有的、<strong>记录到日志的逐 agent 协作状态</strong>：激活期间，每个模型请求都会包含一段部署持有的指引。</p>
+<pre><code class="language-yaml"># 配置（PlanModeConfig）
+plan-mode:
+  config:
+    section: |
+      You are in plan mode. Do not modify files. Research and present a plan
+      using the exit_plan_mode tool, starting with a `#` heading.</code></pre>
+<p><code>section</code> 缺失、为空白或不是字符串，以及任何未知键，都会在插件加载时失败。计划模式激活期间，确切的 <code>section</code> 文本以 order 50 渲染为 <code>plan:policy</code> 系统提示词段落；未激活时<strong>不贡献任何文本</strong>。</p>
+<h2>软性指引，不是强制限制</h2>
+<p>计划模式是<strong>软性指引</strong>——它通过提示词引导模型，而不是强制执行：</p>
+<table><thead><tr><th>机制</th><th>类型</th><th>是否强制</th></tr></thead><tbody><tr><td><code>plan:policy</code> 段落</td><td>提示词</td><td>否（软指引）</td></tr><tr><td>沙箱模式</td><td><code>SandboxMode</code></td><td>是</td></tr><tr><td>审批策略</td><td><code>ApprovalPolicy</code></td><td>是</td></tr></tbody></table>
+<p>沙箱模式与审批策略<strong>都不读写计划状态</strong>——部署需要分别配置它们（计划模式下想要&quot;只能读不能写&quot;，需要同时配置 <code>sandbox: read-only</code> 与审批策略）。</p>
+<h2>已记录状态与恢复</h2>
+<p><code>plan/mode</code>（<code>{ active: boolean }</code>）是仅日志、整值替换的会话事件：持久且可回放，<strong>绝不进入模型 transcript</strong>。</p>
+<pre><code class="language-ts">foldPlanMode(events, end?)  // 返回前缀中最后一条已记录值；没有时返回 false</code></pre>
+<p>生效状态始终是会话日志的纯折叠——恢复、fork 与压缩无需实时镜像即可复原；UI 通过 <code>session/event</code> 观察已提交的切换。</p>
+<h2>待生效选择与 pre-step 追加</h2>
+<pre><code class="language-ts">get(agent: Agent): { active: boolean; pending?: boolean }
+set(agent: Agent, active: boolean): 'committed' | 'queued' | 'cancelled' | 'noop'</code></pre>
+<p>由于每个会话事件都位于轮次之内，用户选择会保持<strong>待生效</strong>，直到下一个被接受的轮内 pre-step 在派生请求之前追加该选择：</p>
+<ul><li>agent 运行时，唯一的追加点是前置注册的 <code>agent/pre-step</code> 监听器——它观察每个候选请求步骤，先调用下游监听器，只在下游接受该步骤后追加</li><li>轮次之间选择立即追加（<code>committed</code>）；轮次内保持待生效（<code>queued</code>）</li><li>追加用户选择时还会记录一条插件来源的 <code>user/message</code> 通知——仅当最后记录的请求头描述的是另一种状态时（模型恰好在上下文变化时收到通知，绝不重复）</li></ul>
+<h2>退出工具与 <code>/plan</code> 命令</h2>
+<h3><code>exit_plan_mode</code></h3>
+<ul><li>计划模式未激活时<strong>仍保持注册</strong>——进入/离开计划模式只改变提示词段落，绝不改变请求的工具目录（schema 稳定）</li><li>计划模式之外执行会失败</li><li>计划模式中：要求一份以 <code>#</code> 标题开头的完整 markdown 计划，通过<strong>用户交互 seam</strong>（<code>ctx.userQuestions</code>）呈交评审</li><li>批准 → <code>{ approved: true }</code> + 静默（不叙述）的待生效退出，由下一个被接受的轮内 pre-step 追加——计划指引在 assistant 当前这批工具调用的剩余部分继续生效</li><li>&quot;继续规划&quot; → 一次携带用户反馈的失败调用，模型据此修订并再次呈交</li><li>评审期间交互通道缺失或服务重载 → 调用失败，<strong>不会静默离开计划模式</strong></li></ul>
+<h3><code>/plan</code> 命令</h3>
+<p><code>ctx.commands</code> 被组合时，插件注册 <code>/plan [off|message]</code>：</p>
+<ul><li>单独的 <code>/plan</code> → 选择计划模式</li><li>任何其他非空消息 → 先选择计划模式，再通过 <code>agent.steer()</code> 提交该文本，使其在计划指引下成为下一步骤的普通已记录用户消息</li><li>确切参数 <code>off</code> → 选择未激活（还会在待生效条目被追加并对请求可见之前取消它）</li></ul>
+<h2>生命周期示意</h2>
+<pre><code class="language-text">用户: /plan
+  → plan/mode { active: true }（轮次之间 → committed）
+  → 下一 pre-step 追加 → plan:policy 段落进入请求
+模型: [只读研究] … exit_plan_mode(plan)
+  → userQuestions 评审
+  → 批准 → 待生效 exit
+  → 下一 pre-step 追加 plan/mode { active: false } → 恢复常规指引</code></pre>
+<h2>与参考实现的对比</h2>
+<p>Claude Code 的 Plan Mode 通过 <code>EnterPlanModeTool</code>/<code>ExitPlanModeV2Tool</code> 切换权限上下文（<code>prepareContextForPlanMode()</code> 只读模式，退出时恢复），并有独立的计划文件持久化与审批流程。DeepSeek Harness 的版本更简：<strong>计划状态是日志折叠，指引是提示词段落，退出是带评审的工具调用</strong>——没有独立的权限上下文切换，权限由沙箱/审批策略各自掌管（这正是&quot;软指引&quot;设计的全部含义）。</p>
+      <div class="pagenav"><a class="card prev" href="sandbox.html"><div class="label">上一页</div><div class="title">沙箱机制：进程隔离</div></a><a class="card next" href="../features/web-ui.html"><div class="label">下一页</div><div class="title">Web UI：浏览器中的控制台</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

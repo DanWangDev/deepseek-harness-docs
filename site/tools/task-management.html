@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>任务管理：todo_write 快照 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item active" href="task-management.html">任务管理：todo_write 快照</a><a class="item" href="web.html">Web 访问：搜索与抓取</a><a class="item" href="subagent.html">子 Agent：委派与编排</a><a class="item" href="workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 工具系统 / 任务管理：todo_write 快照</div>
+      <h1>任务管理：todo_write 快照</h1>
+<blockquote><p>揭秘 DeepSeek Harness 的任务管理系统：<code>todo_write</code> 工具如何通过全量列表快照维护 agent 的待办清单——一个有意保持精简、可在 UI 中渲染为检查清单的会话状态。</p></blockquote>
+<h2>为什么需要任务管理</h2>
+<p>一个长任务可能横跨多个轮次：修复测试、重构模块、写文档。模型需要&quot;当前进行到哪了、接下来做什么&quot;的记忆——不是藏在 prompt 里的自由文本，而是<strong>结构化的、可在 UI 渲染、可被模型读取</strong>的状态。</p>
+<p><code>todo_write</code> 就是这个机制：一个会话所有的状态，UI 将最新的 <code>todo/write</code> 事件渲染为检查清单。</p>
+<h2>数据模型：有意的精简</h2>
+<pre><code class="language-ts">/** One entry in an agent's todo list — the unit of the `todo/write` event's whole-list snapshot. */
+interface TodoItem {
+  /** What this task is — a short imperative line shown in the UI. */
+  content: string
+  /** Lifecycle state. `in_progress` marks a task being worked now; parallel work may mark several. */
+  status: 'pending' | 'in_progress' | 'completed'
+}</code></pre>
+<p>注意<strong>刻意省略了什么</strong>：没有 id、没有优先级、没有 <code>activeForm</code>——因为列表在每次写入时<strong>整体替换</strong>（last-write-wins），条目无需稳定标识。三个状态描述完整的可移植生命周期。</p>
+<h2>全量快照语义</h2>
+<pre><code class="language-text">模型: todo_write([{content: &quot;修复测试&quot;, status: &quot;in_progress&quot;}, …])
+  → todo/write 事件：全量列表快照
+  → UI 渲染最新快照为检查清单
+  → 下次写入整体替换</code></pre>
+<ul><li>每次写入都是<strong>整个列表</strong>，不是增量 diff——回放只需折叠最新快照</li><li><code>todo/write</code> 是<strong>仅日志的 UI 状态</strong>：whole-list snapshot，latest-write-wins on replay；<strong>绝不进入派生历史</strong>（模型不把它当作消息）</li><li>模型通过工具调用维护它，UI 通过 <code>session/event</code> 观察</li></ul>
+<h2>并行语义</h2>
+<p><code>allowParallelInProgress</code> 是<strong>没有默认值的必填配置</strong>：</p>
+<ul><li>选择 <code>true</code>（工具目录默认展示的分支）：描述允许同时存在多个 <code>in_progress</code> 项——并行工作可以标记多个任务进行中</li><li>选择 <code>false</code> 的部署获得同一工具，但描述会要求只能有 1 个活动任务</li></ul>
+<p>这是&quot;配置即行为&quot;的典型例子：同一个工具 schema 在两种配置下引导模型采用不同的纪律。</p>
+<h2>与参考实现的对比</h2>
+<p>Claude Code 的任务系统是<strong>双轨架构</strong>：V1 内存 TodoWrite 与 V2 文件系统 Tasks（包含依赖管理、认领竞争和验证推动）。DeepSeek Harness 选择<strong>单一精简模型</strong>：</p>
+<table><thead><tr><th>维度</th><th>Claude Code Tasks</th><th>dsh todo_write</th></tr></thead><tbody><tr><td>存储</td><td>文件系统 + 内存双轨</td><td>会话日志事件（<code>todo/write</code>）</td></tr><tr><td>条目</td><td>id、依赖、认领、验证</td><td>一行 content + 三态 status</td></tr><tr><td>更新</td><td>增量</td><td>全量快照替换</td></tr><tr><td>回放</td><td>需要状态重建</td><td>折叠最新快照即可</td></tr></tbody></table>
+<p>取舍：dsh 放弃了依赖管理、认领竞争等高级特性，换来<strong>无状态回放、零漂移、与事件溯源天然一致</strong>——任务状态与对话历史存储在同一份日志里，fork/恢复/压缩自动携带。</p>
+<h2>工具 schema 要点</h2>
+<table><thead><tr><th>工具</th><th>行为</th></tr></thead><tbody><tr><td><code>todo_write</code></td><td>整体替换待办列表；<code>{ todos: TodoItem[] }</code></td></tr></tbody></table>
+<h2>使用模式</h2>
+<p>模型在轮次中遵循&quot;计划 → 执行 → 更新&quot;的循环：</p>
+<ol><li>收到需求后先 <code>todo_write</code> 拆解任务</li><li>每完成一项更新对应条目的 status</li><li>轮次结束时列表应全部 <code>completed</code> 或如实标注剩余</li></ol>
+<p>UI 把最新的 <code>todo/write</code> 事件渲染为检查清单——用户实时看到 agent 的&quot;进行中&quot;状态，这也是长任务可中断、可继续的基础。</p>
+      <div class="pagenav"><a class="card prev" href="search-navigation.html"><div class="label">上一页</div><div class="title">搜索与导航：glob/grep 定位</div></a><a class="card next" href="web.html"><div class="label">下一页</div><div class="title">Web 访问：搜索与抓取</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>为什么写这份白皮书 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="architecture-overview.html">架构全景：插件化分层详解</a><a class="item active" href="why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 介绍 / 为什么写这份白皮书</div>
+      <h1>为什么写这份白皮书</h1>
+<blockquote><p>对 DeepSeek Harness 源码与官方文档的系统性分析。目标读者是想要理解、使用并扩展这套 agent harness 的开发者——从&quot;它和 Claude Code 有什么不同&quot;到&quot;我怎么给它写一个插件&quot;。</p></blockquote>
+<h2>背景：一个正在快速迭代的 developer preview</h2>
+<p>DeepSeek Harness 由 DeepSeek AI 开发，目前处于 <em>developer preview</em> 阶段并快速迭代——官方 README 明言 <strong>THERE WILL BE COMPATIBILITY-BREAKING CHANGES</strong>。这意味着：</p>
+<ul><li>官方文档（<code>docs/</code> 目录）是<strong>当前状态</strong>的准确投影，但不承诺向后兼容</li><li>磁盘格式（会话日志、SQLite schema）会在版本间演进，旧格式被拒绝而非被兼容</li><li>术语体系已经稳定：seam、scope、turn、step、goal、preset……这些词在<a href="https://github.com/deepseek-ai/deepseek-harness/blob/main/docs/glossary.zh.md">术语表</a>中逐一锁定</li></ul>
+<p>在这样一个快速迭代的项目上，最可靠的知识来源不是博客文章，而是<strong>源码本身</strong>：类型声明、包 README 与事件目录。这份白皮书正是以它们为准绳整理而成。</p>
+<h2>它和 Claude Code 白皮书的关系</h2>
+<p><a href="https://ccb.agent-aura.top/docs/introduction/what-is-claude-code">Claude Code 白皮书</a>是对 Anthropic 官方 CLI 的逆向工程——通过反编译单文件 bundle 解析运行时行为。DeepSeek Harness 不需要逆向：它是开源的，源码就在 <code>packages/</code> 下。因此这份白皮书采用相同的<strong>体例</strong>（一句话定义、对比表格、流程图示、源码级拆解），但内容来自<strong>正向工程</strong>：</p>
+<table><thead><tr><th>维度</th><th>Claude Code 白皮书</th><th>本白皮书</th></tr></thead><tbody><tr><td>知识来源</td><td>反编译 TypeScript bundle</td><td>开源仓库源码 + 官方文档</td></tr><tr><td>核心对象</td><td><code>query()</code> 异步生成器循环</td><td>Cordis 插件树 + agent-loop 驱动器</td></tr><tr><td>权威性</td><td>逆向推断，可能有误</td><td>源码即真源，可随时核对</td></tr><tr><td>叙事视角</td><td>&quot;被隐藏的机制&quot;</td><td>&quot;公开架构的完整地图&quot;</td></tr></tbody></table>
+<h2>这份白皮书回答什么问题</h2>
+<p>按阅读路径组织，每一章回答一组问题：</p>
+<table><thead><tr><th>章节</th><th>回答的问题</th></tr></thead><tbody><tr><td>介绍</td><td>它是什么？架构长什么样？为什么这样设计？</td></tr><tr><td>核心机制</td><td>Cordis 怎么工作？循环怎么转？会话怎么记？提示词怎么拼？作用域怎么分？</td></tr><tr><td>工具系统</td><td>工具怎么注册、怎么执行、怎么渲染？八个工具族各做什么？</td></tr><tr><td>上下文工程</td><td>上下文怎么压缩？Token 预算怎么算？</td></tr><tr><td>Agent 机制</td><td>preset 怎么组装能力？目标怎么持久化？自我修改怎么做？</td></tr><tr><td>可扩展性</td><td>怎么写插件？怎么桥接 Claude Code hooks？技能系统怎么用？SDK 怎么接？</td></tr><tr><td>安全</td><td>威胁模型是什么？审批和沙箱怎么把关？计划模式怎么运作？</td></tr><tr><td>功能与使用</td><td>Web UI 怎么用？模型提供方怎么配？命令和后台任务怎么管理？</td></tr><tr><td>内部机制</td><td>仓库怎么布局？运行时不变式是什么？身份与遥测怎么工作？</td></tr></tbody></table>
+<h2>写作方法</h2>
+<ol><li><strong>源码优先</strong>：每个机制都对应一个真实的类型、服务键或事件名，并给出 <code>packages/</code> 下的源码路径</li><li><strong>事件即事实</strong>：凡是模型可见的内容，必然以会话事件落盘——因此&quot;系统实际做了什么&quot;可以从 <code>SessionEventMap</code> 反推</li><li><strong>术语一致</strong>：沿用官方术语表（seam、scope、turn、step……），不发明新词</li><li><strong>当前状态</strong>：描述 shipped 的现实，不描述&quot;即将到来&quot;的功能</li></ol>
+<h2>边界与免责声明</h2>
+<ul><li>本文档覆盖<strong>已实现并交付</strong>的功能；<code>developer preview</code> 下个别细节可能已随最新提交变化——请以源码为准</li><li>本文档不是官方文档的镜像，而是独立整理的分析性读物；需要逐字段契约时，请查阅 <a href="https://github.com/deepseek-ai/deepseek-harness/tree/main/docs">docs/</a> 与各包 README</li><li>演示性的 <code>examples/</code> 组合不在本文档范围之内，但示例代码是理解最小可用组合的好入口</li></ul>
+<h2>如何阅读</h2>
+<ul><li>每页以一句话定义开篇，随后是表格与图示</li><li>页间通过&quot;上一页 / 下一页&quot;串联；左侧边栏提供任意跳转</li><li>代码块与类型名是唯一权威的&quot;锚点&quot;——在仓库中 <code>grep</code> 这些名字可以验证任何论断</li></ul>
+      <div class="pagenav"><a class="card prev" href="architecture-overview.html"><div class="label">上一页</div><div class="title">架构全景：插件化分层详解</div></a><a class="card next" href="../core/cordis.html"><div class="label">下一页</div><div class="title">Cordis：一切皆插件的基座</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

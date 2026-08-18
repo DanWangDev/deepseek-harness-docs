@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>System Prompt 动态组装 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="session.html">会话日志：事件溯源的唯一真源</a><a class="item active" href="system-prompt.html">System Prompt 动态组装</a><a class="item" href="scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 核心机制 / System Prompt 动态组装</div>
+      <h1>System Prompt 动态组装</h1>
+<blockquote><p>深入解析 DeepSeek Harness 的 System Prompt 组装机制（<code>packages/core/system-prompt</code>）：提示词段落按 order 拼接、动态上下文按需物化、工具 schema 白名单投影——如何把零散插件贡献组装成缓存友好的请求前缀。</p></blockquote>
+<h2>一个核心设计：注册表，而非模板</h2>
+<p>System Prompt 不是一份写死的模板，而是一个<strong>注册表</strong>：任何插件都可以注册提示词段落（<code>PromptSection</code>）与动态上下文（<code>PromptContext</code>），组装时按 <code>order</code> 排序拼接。这使&quot;加一段提示词&quot;变成一次注册调用，而不是修改模板文件。</p>
+<pre><code class="language-text">插件 A 注册 section(&quot;harness:identity&quot;, order=-100)
+插件 B 注册 section(&quot;deployment:persona&quot;, order=0)
+插件 C 注册 section(&quot;tool:guidance&quot;, order=150)
+插件 D 注册 context(&quot;workspace:notice&quot;, order=10)
+         │
+         ▼ 组装（per step）
+   sections 按 order 升序拼接
+   + ctx.tools.schemas(scope) 工具 schema 允许列表
+         │
+         ▼
+   request/header 事件写入日志（EpochHeader.system + .tools）</code></pre>
+<h2><code>PromptSection</code>：提示词段落</h2>
+<pre><code class="language-ts">/** One contributed section of the system prompt (registry input). */
+interface PromptSection {
+  /** Unique name — a duplicate registration throws. */
+  readonly name: string
+  /**
+   * Sections are concatenated in ascending order. Convention: `-100` is the
+   * harness identity, `0` the deployment persona, tool guidance uses 100–199;
+   * other negative orders also render before the persona.
+   */
+  readonly order: number
+  /** Static text or a provider evaluated at each assembly with that assembly's context. */
+  readonly text: string | ((context: AssembleContext) =&gt; string)
+  /** Treat this contribution as the complete system prompt. */
+  readonly complete?: boolean
+}</code></pre>
+<p>关键语义：</p>
+<ul><li><strong><code>order</code> 约定</strong>：<code>-100</code> 是 harness 身份，<code>0</code> 是部署 persona，工具指引用 100–199；负序也渲染在 persona 之前。协作式组装完成后，一个有效的 <code>complete</code> 段会成为唯一的提示词段落</li><li><strong><code>text</code> 可以是函数</strong>：每次组装以当次的 <code>AssembleContext</code> 求值，文本可引用 <code>{{variable}}</code>，稍后由 <code>renderPrompt</code> 插值</li><li><strong>重复注册抛异常</strong>：同名段在一次组装中只能有一个</li></ul>
+<h2><code>PromptContext</code>：动态上下文</h2>
+<p><code>PromptContext</code> 是与段落对应的缓存安全结构——动态模型上下文被物化为<strong>持久的 user-role 快照</strong>：</p>
+<ul><li>agent loop 仅在完整当前快照发生变化或被压缩移除时，才会将其记录在保留的模型历史之后</li><li>文本可为函数；空文本贡献为空</li><li>每个上下文条目有自己的 <code>source</code> 与元数据（如 <code>{ kind: 'plugin', plugin: '…' }</code> + <code>form</code>）</li></ul>
+<p>消息来源的 <code>form</code> 词汇是语义的，从不视觉化：<code>instructions</code>（工作区文件的指令）、<code>catalog</code>（可用项目录）、<code>snapshot</code>（当前状态，后快照取代前快照）、<code>notice</code>（刚发生的事，一次性）、<code>relay</code>（另一 agent 发来的消息）、<code>recall</code>（从另一会话日志取出的材料）。</p>
+<h2>工具 schema：白名单投影</h2>
+<p><code>ctx.tools.schemas(scope)</code> 把当前作用域可见的工具定义投影为<strong>面向模型的 <code>ToolSchema[]</code></strong>：只含 <code>name</code>、<code>description</code>、<code>parameters</code>——<code>output</code>、<code>execute</code>、<code>finalizeContent</code>、<code>timeoutMs</code>、<code>isConcurrencySafe</code>、<code>presentCall</code>、<code>presentResult</code> 等执行与展示回调<strong>绝不泄漏到模型请求中</strong>。</p>
+<p>作用域解析使每个 agent 看到不同的工具清单：全局层 + 该 agent scope 链上的每个祖先，带作用域的工具遮蔽同名的全局对应项，restriction 过滤全局工具集合（见<a href="scope.html">Agent 作用域</a>）。</p>
+<h2>组装上下文</h2>
+<pre><code class="language-ts">/** Merge-extensible context for one prompt assembly. */
+interface AssembleContext {
+  /** Scope whose providers and waterfall listeners participate. */
+  scope?: ScopeKey
+  /** Explicit control signal for the turn that requested this assembly, when any. */
+  signal?: AbortSignal
+}</code></pre>
+<p><code>AssembleContext</code> 标识一次组装所解析的作用域层。<code>dsh-agent</code> 添加可选字段 <code>agent</code>；<code>assembleContextFor(agent, signal)</code> 一起设置显式字段。裸组装既没有作用域也没有信号。</p>
+<h2>缓存友好</h2>
+<p>系统提示词是请求中最昂贵、最重复的部分。两个机制保证缓存友好：</p>
+<ol><li><strong>增量记录</strong>：<code>request/header</code> 只在请求变化时记录新快照；动态上下文只在快照变化或压缩移除时追加——不会每步重写</li><li><strong>纯函数重建</strong>：请求头是日志的纯函数，回放/恢复/压缩后从最新快照重建，不需要实时镜像</li></ol>
+<h2>实践：注册一段提示词</h2>
+<pre><code class="language-ts">import { Context } from '@deepseek-ai/cordis'
+
+export function apply(ctx: Context) {
+  ctx.systemPrompt.section({
+    name: 'my-plugin:guidance',
+    order: 120,                       // 工具指引区间
+    text: 'When the user asks about X, prefer approach Y.',
+  })
+  // disposer 由 effect 自动管理：插件卸载时该段被撤销
+}</code></pre>
+<p>这就是&quot;一切皆插件&quot;的日常形态——不加提示词到模板，而是注册一个段落，reload 即生效，卸载即撤销。</p>
+      <div class="pagenav"><a class="card prev" href="session.html"><div class="label">上一页</div><div class="title">会话日志：事件溯源的唯一真源</div></a><a class="card next" href="scope.html"><div class="label">下一页</div><div class="title">Agent 作用域：可见性即生命周期</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Web 访问：搜索与抓取 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item" href="../core/cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="../core/the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="../core/session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="../core/system-prompt.html">System Prompt 动态组装</a><a class="item" href="../core/scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="task-management.html">任务管理：todo_write 快照</a><a class="item active" href="web.html">Web 访问：搜索与抓取</a><a class="item" href="subagent.html">子 Agent：委派与编排</a><a class="item" href="workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 工具系统 / Web 访问：搜索与抓取</div>
+      <h1>Web 访问：搜索与抓取</h1>
+<blockquote><p>Web 访问 seam 在同一个 <code>ctx.web</code> 服务上横跨<strong>两项操作</strong>（search 与 fetch）：模型提交一个查询，提供方返回规范化的来源列表或抓取正文——更换后端不改变模型与工具之间的契约。</p></blockquote>
+<h2>为什么一项能力包含两项操作</h2>
+<p>搜索与抓取既不共享请求 schema，也不共享业务逻辑，但它们被有意设计为同一个 <code>ctx.web</code> 中间层：</p>
+<ul><li>一个提供方选择策略的所有者</li><li>一套中止与错误词汇</li><li>一个面向产品的&quot;此 harness 如何访问 Web&quot;配置界面</li></ul>
+<p>提供方注册的是<strong>能力</strong>（<code>WebSearchProvider</code> 或 <code>WebFetchProvider</code>），而非工具；面向模型的名称、schema、提示词引导与展示全部集中在唯一的消费方 <code>dsh-tool-web</code> 中。</p>
+<h2>能力拆解</h2>
+<table><thead><tr><th>角色</th><th>包</th><th>说明</th></tr></thead><tbody><tr><td>Service Definition</td><td><code>dsh-web</code></td><td><code>ctx.web</code> + 提供方注册表</td></tr><tr><td>Service Provider</td><td><code>dsh-web-search-exa</code> / <code>dsh-web-search-perplexity</code> / <code>dsh-web-search-deepseek</code> / <code>dsh-web-fetch-http</code></td><td>三个搜索后端 + 一个抓取后端</td></tr><tr><td>Consumer</td><td><code>dsh-tool-web</code></td><td><code>web_search</code> / <code>web_fetch</code> 工具 schema</td></tr></tbody></table>
+<h2>搜索请求与结果</h2>
+<p>面向模型的工具参数<strong>仅为一个 <code>query</code></strong>；<code>maxResults</code> 是消费方自有的上限（<code>searchMaxResults</code> 配置，默认 <code>8</code>），通过 seam 传递并在返回时强制执行——如果提供方返回超量，seam 截断 <code>sources[]</code> 并设置 <code>truncated</code>。</p>
+<pre><code class="language-text">模型: web_search(&quot;DeepSeek Harness 是什么&quot;)
+  → ctx.web.searchX({ query, maxResults: 8 })   ← 选中的提供方
+  → 规范化结果 { content?, sources[], truncated }
+  → web 卡片（kind: 'search'）：结构化 sources + 可选 answer</code></pre>
+<pre><code class="language-ts">/** Normalized search outcome. */
+interface WebSearchResult {
+  /** Optional provider-generated answer text, search context, or summary. */
+  readonly content?: string
+  /** Citeable sources, already truncated to the request's maxResults. */
+  readonly sources: readonly WebSearchSource[]
+  /** True when the seam dropped sources to honor maxResults. */
+  readonly truncated: boolean
+}</code></pre>
+<p>来源始终有 <code>url</code>；<code>title</code>、<code>snippet</code>、<code>publishedAt</code> 是可选的——因为不是每个提供方都返回它们（Perplexity 的引用可能只有 URL），<strong>强制适配器发明字段会让 seam 撒谎</strong>。<code>dsh-tool-web</code> 渲染 <code>title ?? hostname(url)</code> 用于显示。</p>
+<h2>抓取请求与结果</h2>
+<pre><code class="language-ts">/** What one fetch-capable backend is asked to retrieve. */
+interface WebFetchRequest {
+  readonly url: string
+}</code></pre>
+<p>请求<strong>刻意省略</strong>超时、格式、提示与抽取控制：取消是直接的执行参数，展示与高层 LLM 关注点属于安全检索之外。</p>
+<p><strong>HTTP 状态码是资源状态的一部分，不自动视为失败</strong>：即使一次成功的网络抓取收到 <code>404</code> 或 <code>500</code>，也仍产出一个 <code>WebFetchResult</code>（状态码 + 长度受限的已解码正文）。<code>url</code> 是经过允许的重定向后的最终 URL。<code>WebError</code> 仅用于无法安全获取或表示资源的情况。</p>
+<h2>中止与错误词汇</h2>
+<p><code>ctx.web</code> 拥有统一的错误与中止词汇：取消信号直接传播给提供方；<code>WebError</code> 区分无法安全检索（网络失败、非法 URL）与业务失败（资源不存在）。查询被中止时返回结构化错误而非部分结果。</p>
+<h2>展示：web 卡片</h2>
+<p>完成的 web 检索以 <code>{ card: 'web', kind: 'search' | 'fetch', … }</code> 渲染意图呈现：</p>
+<table><thead><tr><th>kind</th><th>字段</th><th>回退</th></tr></thead><tbody><tr><td><code>search</code></td><td>结构化 <code>sources</code> / <code>answer?</code> / <code>truncated</code></td><td>不具备 web 能力的 UI 回退到原始结果内容</td></tr><tr><td><code>fetch</code></td><td><code>url</code> / <code>statusCode</code> / <code>truncated</code></td><td>同上</td></tr></tbody></table>
+<p>正文不会重复进视图——有能力的 UI 直接渲染结构化来源列表，其余 UI 使用原始内容。</p>
+<h2>工具 schema 要点</h2>
+<table><thead><tr><th>工具</th><th>行为</th></tr></thead><tbody><tr><td><code>web_search</code></td><td>搜索 Web 并返回可引用来源列表</td></tr><tr><td><code>web_fetch</code></td><td>抓取单个 URL 并返回状态码与受限正文</td></tr></tbody></table>
+<p>两个工具都把提供方选择置于 <code>ctx.web</code> 之后，使模型可见 schema 在更换后端时保持稳定——这是能力 seam 的又一实例。</p>
+      <div class="pagenav"><a class="card prev" href="task-management.html"><div class="label">上一页</div><div class="title">任务管理：todo_write 快照</div></a><a class="card next" href="subagent.html"><div class="label">下一页</div><div class="title">子 Agent：委派与编排</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

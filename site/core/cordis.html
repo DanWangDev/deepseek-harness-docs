@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Cordis：一切皆插件的基座 — DeepSeek Harness 白皮书</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="../index.html"><span class="logo">DSH</span><span><span class="name">DeepSeek Harness</span><br/><span class="sub">插件化 Agent 架构白皮书</span></span></a>
+    <div class="sec">介绍</div><a class="item" href="../introduction/what-is-deepseek-harness.html">什么是 DeepSeek Harness</a><a class="item" href="../introduction/architecture-overview.html">架构全景：插件化分层详解</a><a class="item" href="../introduction/why-this-whitepaper.html">为什么写这份白皮书</a><div class="sec">核心机制</div><a class="item active" href="cordis.html">Cordis：一切皆插件的基座</a><a class="item" href="the-loop.html">Agentic Loop：自主循环的核心</a><a class="item" href="session.html">会话日志：事件溯源的唯一真源</a><a class="item" href="system-prompt.html">System Prompt 动态组装</a><a class="item" href="scope.html">Agent 作用域：可见性即生命周期</a><div class="sec">工具系统</div><a class="item" href="../tools/what-are-tools.html">工具系统设计：AI 的双手</a><a class="item" href="../tools/filesystem.html">文件系统工具：原子读写编辑</a><a class="item" href="../tools/shell-execution.html">命令执行：Bash 与 PowerShell</a><a class="item" href="../tools/search-navigation.html">搜索与导航：glob/grep 定位</a><a class="item" href="../tools/task-management.html">任务管理：todo_write 快照</a><a class="item" href="../tools/web.html">Web 访问：搜索与抓取</a><a class="item" href="../tools/subagent.html">子 Agent：委派与编排</a><a class="item" href="../tools/workflow.html">工作流：脚本化多 Agent 编排</a><div class="sec">上下文工程</div><a class="item" href="../context/compaction.html">上下文压缩：记忆的整理术</a><a class="item" href="../context/token-budget.html">Token 预算与请求头</a><div class="sec">Agent 机制</div><a class="item" href="../agent/preset.html">Agent Preset：按会话组装能力</a><a class="item" href="../agent/goal.html">同会话目标：持久完成目标</a><a class="item" href="../agent/self-modification.html">自我修改：插件即运行时</a><div class="sec">可扩展性</div><a class="item" href="../extensibility/plugins.html">插件开发：从注册到生效</a><a class="item" href="../extensibility/hooks.html">Hooks：Claude Code/Codex 桥接</a><a class="item" href="../extensibility/skills.html">Skills：技能系统</a><a class="item" href="../extensibility/sdk.html">SDK 与协议：自动化接入</a><div class="sec">安全</div><a class="item" href="../safety/why-safety-matters.html">安全至关重要：威胁模型</a><a class="item" href="../safety/permission-model.html">审批模型：ask/never 决策</a><a class="item" href="../safety/sandbox.html">沙箱机制：进程隔离</a><a class="item" href="../safety/plan-mode.html">计划模式：先看后做</a><div class="sec">功能与使用</div><a class="item" href="../features/web-ui.html">Web UI：浏览器中的控制台</a><a class="item" href="../features/providers.html">模型提供方：多端点路由</a><a class="item" href="../features/commands.html">人类命令：斜杠平面</a><a class="item" href="../features/jobs.html">后台任务：长时运行管理</a><div class="sec">内部机制</div><a class="item" href="../internals/layout.html">仓库布局：包的地图</a><a class="item" href="../internals/invariants.html">运行时不变式：架构的自证</a><a class="item" href="../internals/telemetry-identity.html">身份与遥测：匿名与审计</a>
+  </aside>
+  <main class="main">
+    <div class="content">
+      <div class="breadcrumb"><a href="../index.html">首页</a> / 核心机制 / Cordis：一切皆插件的基座</div>
+      <h1>Cordis：一切皆插件的基座</h1>
+<blockquote><p>Cordis 是 DeepSeek Harness 底层以 vendor 方式引入的插件框架：插件向共享上下文贡献服务、类型化事件和可逆的副作用。理解 Cordis 的五个核心概念，就理解了 dsh 的一切。</p></blockquote>
+<h2>五个核心概念</h2>
+<ul><li><strong>插件是实现 Service 的对象。</strong> 它可以是一个带有可选 <code>inject</code> 和 <code>apply(ctx)</code> 字段的函数，也可以是一个 <code>Service</code> 子类，其生命周期由 Cordis 挂载到当前上下文中。</li><li><strong>上下文是服务的容器。</strong> 一个服务占据一个稳定的 <code>ctx.&lt;key&gt;</code>（如 <code>ctx.tools</code>、<code>ctx.llm</code>、<code>ctx.sessions</code>）；其他插件通过 key 查找服务，而非导入具体实现。</li><li><strong>通过 <code>inject</code> 声明服务依赖。</strong> 插件声明所需的服务后，会等待这些服务就绪才启动；加载顺序通过服务依赖表达，而非手动编排启动序列。</li><li><strong>类型化事件用于通信。</strong> 服务通过 TypeScript 声明合并注册事件名，然后以 <code>emit</code>、<code>waterfall</code>、<code>parallel</code> 或 <code>serial</code> 方式分发。</li><li><strong>注册是可逆的副作用。</strong> 提示词片段、工具 schema、适配器、提供方和监听器通过 <code>ctx.effect()</code> 或 <code>ctx.on()</code> 安装，reload 和 teardown 时会按预期撤销。</li></ul>
+<h2>分发模式</h2>
+<p>每个事件具有以下分发模式之一，且只能通过对应方法分发：</p>
+<table><thead><tr><th>模式</th><th>是否 await？</th><th>分发顺序</th><th>是否有返回值？</th></tr></thead><tbody><tr><td><code>emit</code></td><td>否</td><td>监听器按注册顺序观察</td><td>否</td></tr><tr><td><code>waterfall</code></td><td>否</td><td>监听器按注册顺序观察</td><td>是</td></tr><tr><td><code>parallel</code></td><td>是</td><td>所有监听器并行观察事件</td><td>否</td></tr><tr><td><code>serial</code></td><td>是</td><td>监听器按注册顺序观察</td><td>是</td></tr></tbody></table>
+<p>分发模式是事件公开约定的一部分。新的 harness 事件通过 <code>@mode</code> 标签记录模式，以便生成的目录可以将声明与分发调用点做交叉校验。</p>
+<h2>Waterfall 语义：环绕中间件</h2>
+<p><code>ctx.waterfall</code> 是<strong>环绕中间件</strong>。监听器接收 <code>(...args, next)</code>。调用 <code>next()</code> 会执行下游监听器；下游返回值通过 <code>next()</code> 返回当前包装层，可由该层包装后继续向外返回。<strong>不调用 <code>next()</code> 直接返回则短路</strong>：</p>
+<pre><code class="language-text">最外层监听器 (waterfall listener A)
+  └─ next() ──► 下游监听器 B
+                 └─ next() ──► 默认行为（调用方）
+                 ◄─ 返回值 ───┘
+  ◄─ 包装后返回 ──┘</code></pre>
+<p>协作式监听器通常修改一个共享的请求或决策对象，然后委托。监听器也可以选择完全替换结果——下游监听器将只看到替换后的结果。仅当监听器必须在普通注册之前运行时才使用 <code>prepend: true</code>。</p>
+<p>对于单决策事件，短路是<strong>设计意图</strong>：策略监听器在拥有决策权时可以不调用 <code>next()</code> 直接返回（如 <code>agent/pre-step</code> 的 reject、<code>tools/pre-execute</code> 的 deny），而仅做标注或观察的监听器则必须委托。</p>
+<h2>类型化事件：声明合并</h2>
+<p>dsh 中几乎所有可扩展的和类型都遵循同一模式：一个以判别标签为键的接口（<code>…Map</code>），联合类型由 <code>keyof</code> 派生。<strong>插件通过声明合并添加变体——无需修改拥有该类型的包</strong>：</p>
+<pre><code class="language-ts">// 模式示意
+interface ThingMap {
+  'a': { kind: 'a' }
+  'b': { kind: 'b' }
+}
+type ThingKind = keyof ThingMap        // 'a' | 'b'
+type Thing = ThingMap[keyof ThingMap]  // 可辨识联合
+
+// 插件扩展它，而不触碰源码包
+declare module '@deepseek-ai/dsh-session' {
+  interface SessionEventMap {
+    'my-plugin/event': MyPayload
+  }
+}</code></pre>
+<p>六个规范 map 使用此模式：<code>ContentBlockMap</code>、<code>MessageSourceMap</code>、<code>FinishReasonMap</code>（dsh-llm），<code>TurnTriggerMap</code>、<code>TurnEndReasonMap</code>、<code>SessionEventMap</code>（dsh-session）。消费方最常 <code>switch</code> 的两个大型联合类型是 <code>StreamChunk</code>（流式协议）和 <code>SessionEvent</code>（日志条目）——对标签做 <code>switch</code>，每个分支都能窄化类型，拼错的标签会编译失败。</p>
+<h2>Loader 配置：<code>!!js</code> 与 overlay</h2>
+<p><code>@deepseek-ai/cordis-plugin-include</code> 将 <code>!!js</code> 解析为表达式节点。Loader 在声明的注入激活后，基于该插件上下文插值条目的 <code>config</code>，并在每次挂载决策时基于 loader 上下文插值其 <code>disabled</code> 字段；其余条目元数据保持字面值。<strong>由环境选择插件时，请使用 overlay</strong>（例如 <code>--profile headless</code> 与 <code>--patch</code> 的叠加），而不是在配置里写死条件逻辑。</p>
+<h2>实践规则</h2>
+<ul><li>将行为封装为插件：工具流水线事件属于 <code>ctx.tools</code>，模型流式输出属于 <code>ctx.llm</code>，实时 agent 协调属于 <code>ctx.agents</code></li><li>拦截和策略优先使用事件；直接能力调用优先使用服务方法</li><li>每个注册都应有对应的 disposer：要么从 <code>ctx.effect()</code> 返回一个，要么使用 Cordis 提供的辅助方法自动处理</li><li>如果 teardown 顺序有要求，请将相关工作放在同一个 effect 中，以确保资源按预期顺序释放</li></ul>
+<h2>从框架到产品</h2>
+<p>Cordis 提供了&quot;插件 + 上下文 + 事件&quot;的通用骨架；DeepSeek Harness 在这之上定义了产品词汇：<code>SessionEventMap</code>（会话事实）、<code>ctx.tools</code>（工具注册表）、<code>agent/*</code> 事件（活跃 agent）、能力 seam（Service Definition / Provider / Consumer 三件套）。后续章节逐一展开这些词汇——下一站是驱动这一切的<a href="the-loop.html">Agentic Loop</a>。</p>
+      <div class="pagenav"><a class="card prev" href="../introduction/why-this-whitepaper.html"><div class="label">上一页</div><div class="title">为什么写这份白皮书</div></a><a class="card next" href="the-loop.html"><div class="label">下一页</div><div class="title">Agentic Loop：自主循环的核心</div></a></div>
+      <div class="footer">DeepSeek Harness 白皮书 · 基于仓库源码与文档整理 · 本地静态站点，无外部依赖</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>
