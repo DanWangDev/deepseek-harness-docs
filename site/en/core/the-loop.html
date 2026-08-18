@@ -17,7 +17,7 @@
   <main class="main">
     <div class="content">
       <div class="breadcrumb"><a href="../index.html">Home</a> / Core Mechanics / The Agentic Loop: Core of the Autonomous Loop</div>
-      <p>﻿# The Agentic Loop: The Core Mechanism of the Autonomous Loop</p>
+      <h1>The Agentic Loop: The Core Mechanism of the Autonomous Loop</h1>
 <blockquote><p>An in-depth analysis of the DeepSeek Harness agent loop driver (<code>packages/core/agent-loop</code>) — the complete state machine from inbox claiming, prompt assembly, streaming model calls, and tool execution to termination decisions, based on the event catalog and type declarations at the source level.</p></blockquote>
 <h2>What Is the Agentic Loop</h2>
 <p>A traditional chatbot: you ask, it answers. DeepSeek Harness is different: you state a requirement, and it may execute multiple consecutive operations before giving you the final result.</p>
@@ -72,10 +72,10 @@ type PreStepDecision =
 <h3>Stage 5: Tool Execution</h3>
 <p>A tool call starts with the <code>tool/call</code> event (<code>callId</code> pairs the call with its result; <code>arguments</code> is the raw JSON string produced by the model) and passes through the full pipeline:</p>
 <pre><code class="language-text">tools/pre-execute (waterfall)   → allow | deny | ask (the approval service decides)
-ToolGuard (monotonic)        → returning a reason rejects; cannot be undone
+ToolGuard (monotonic)           → returning a reason rejects; cannot be undone
 tools/execute (waterfall)       → around dispatch: timeout, retry, metrics
 tools/post-execute (waterfall)  → accept | replace | block
-finalizeContent (tool-owned) → last-mile content transform
+finalizeContent (tool-owned)    → last-mile content transform
 tools/result (emit)             → frozen final result; observers cannot transform it</code></pre>
 <p>Execution scheduling has two modes: <code>parallel</code> (may overlap with sibling calls; the tool must declare <code>isConcurrencySafe</code>) and <code>exclusive</code> (runs alone, forming an ordering barrier).</p>
 <h2>Termination Conditions</h2>

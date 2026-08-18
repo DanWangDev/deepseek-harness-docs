@@ -58,7 +58,7 @@ Scoped tools, sections, and variables **replace the global ones of the same name
 ```text
 global tool register("bash", …)
 agent A scope: register("bash", …)   ← A sees its own bash
-agent B scope: (none registered)      ← B sees the global bash
+agent B scope: (none registered)     ← B sees the global bash
 ```
 
 This is the mechanism for tailoring persona and tool variants per agent. When the tool registry reads, it merges the global layer with the observing scope's chain: entries from the nearest layer win name collisions outright.

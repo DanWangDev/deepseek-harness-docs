@@ -97,7 +97,7 @@ print(result.final_response)
 | Scenario | Entry point |
 |---|---|
 | A human working in the browser | `dsh web` (Web UI) |
-| One-shot CI/CD tasks | `dsh --profile headless "任务"` |
+| One-shot CI/CD tasks | `dsh --profile headless "task"` |
 | Driving from a TypeScript program | JSON-RPC SDK (`dsh-sdk-client`) |
 | Driving from a Python program | `deepseek-harness-sdk` |
 | An automation client (an agent protocol besides MCP) | ACP server (`dsh-acp`) |

@@ -17,7 +17,7 @@
   <main class="main">
     <div class="content">
       <div class="breadcrumb"><a href="../index.html">Home</a> / Core Mechanics / Agent Scope: Visibility Is Lifecycle</div>
-      <p>﻿# Agent Scope: Visibility Is Lifecycle</p>
+      <h1>Agent Scope: Visibility Is Lifecycle</h1>
 <blockquote><p>A contribution (tool, prompt section, variable, restriction, listener) is either <em>global</em> or belongs to exactly one scope key. Scoped registration determines both visibility and binds the lifecycle — one fact decides both.</p></blockquote>
 <h2>Why Scope Is Needed</h2>
 <p>A harness process usually holds multiple agents: the main agent, delegated subagents, and resumable background agents. They share the same <code>ctx</code> world but <strong>should not see the same things</strong>:</p>
@@ -48,7 +48,7 @@ type Scoped&lt;T extends object&gt; = object &amp; { readonly [ScopedBrand]: T }
 <p>Scoped tools, sections, and variables <strong>replace the global ones of the same name</strong> only within that scope:</p>
 <pre><code class="language-text">global tool register(&quot;bash&quot;, …)
 agent A scope: register(&quot;bash&quot;, …)   ← A sees its own bash
-agent B scope: (none registered) ← B sees the global bash</code></pre>
+agent B scope: (none registered)     ← B sees the global bash</code></pre>
 <p>This is the mechanism for tailoring persona and tool variants per agent. When the tool registry reads, it merges the global layer with the observing scope's chain: entries from the nearest layer win name collisions outright.</p>
 <h2>Restrictions and Scope-Local Registrations</h2>
 <pre><code class="language-ts">/** Per-scope filter over global tools. Restrictions intersect and do not affect scoped registrations. */
